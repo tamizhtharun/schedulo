@@ -1,0 +1,1630 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Table, Button, Modal, Form, Select, Space, message, 
+  Tooltip, notification, Alert, Spin, Tabs, Badge, Typography
+} from 'antd';
+import { WarningOutlined } from '@ant-design/icons';
+import TimetableGrid from '../components/TimetableGrid';
+import API_BASE_URL from '../api/config';
+
+const { Option } = Select;
+const { Title, Text } = Typography;
+
+/**
+ * Timetables Component - Manages class timetables for TTIncharge users
+ * Supports viewing, creating, and editing timetables with faculty availability checking
+ */
+const Timetables = () => {
+  // State variables
+  const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [faculties, setFaculties] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [isViewModalVisible, setIsViewModalVisible] = useState(false);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedTimetable, setSelectedTimetable] = useState(null);
+  const [facultyAvailability, setFacultyAvailability] = useState({});
+  const [facultyConflicts, setFacultyConflicts] = useState({});
+  const [form] = Form.useForm();
+  const [selectedSubjects, setSelectedSubjects] = useState({});
+  // Initialize timetable with 5 days and 7 hours
+  const [timetable, setTimetable] = useState([
+    { day: 'Monday', firstHour: {}, secondHour: {}, thirdHour: {}, fourthHour: {}, fifthHour: {}, sixthHour: {}, seventhHour: {} },
+    { day: 'Tuesday', firstHour: {}, secondHour: {}, thirdHour: {}, fourthHour: {}, fifthHour: {}, sixthHour: {}, seventhHour: {} },
+    { day: 'Wednesday', firstHour: {}, secondHour: {}, thirdHour: {}, fourthHour: {}, fifthHour: {}, sixthHour: {}, seventhHour: {} },
+    { day: 'Thursday', firstHour: {}, secondHour: {}, thirdHour: {}, fourthHour: {}, fifthHour: {}, sixthHour: {}, seventhHour: {} },
+    { day: 'Friday', firstHour: {}, secondHour: {}, thirdHour: {}, fourthHour: {}, fifthHour: {}, sixthHour: {}, seventhHour: {} }
+  ]);
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const [facultyTimetables, setFacultyTimetables] = useState({});
+
+
+  // Fetch classes from backend on component mount
+  useEffect(() => {
+    fetchClasses();
+  }, []);
+
+  // Fetch classes from backend
+  const fetchClasses = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/classes`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch classes');
+      }
+
+      const data = await response.json();
+      
+      // Transform data for table
+      const transformedClasses = data.map(cls => ({
+        ...cls,
+        key: cls._id
+      }));
+      
+      setClasses(transformedClasses);
+    } catch (error) {
+      console.error('Error fetching classes:', error);
+      message.error('Failed to fetch classes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check faculty conflict for a specific subject at a specific time
+  const checkFacultyConflict = async (day, periodIndex, subjectId, facultyId = null) => {
+    try {
+      // Get the subject details
+      const subject = subjects.find(s => s._id === subjectId || s.value === subjectId);
+      if (!subject) return { hasConflict: false };
+      
+      // Get the faculty ID to check (use provided facultyId or get from subject)
+      const facultyToCheck = facultyId || subject.facultyId;
+      
+      // Check if faculty is already assigned for this hour
+      const currentAssignment = timetable.find(d => 
+        d.day === day && 
+        Object.values(d).some(hour => 
+          hour?.faculty === facultyToCheck
+        )
+      );
+      
+      if (currentAssignment) {
+        // Find the conflicting hour
+        const conflictingHour = Object.entries(currentAssignment).find(([hour, assignment]) => 
+          assignment?.faculty === facultyToCheck
+        )?.[0];
+        
+        if (!conflictingHour) {
+          return { hasConflict: false };
+        }
+        
+        // Get the conflicting subject details
+        const conflictingSubject = subjects.find(s => 
+          s._id === currentAssignment[conflictingHour].subject || 
+          s.value === currentAssignment[conflictingHour].subject
+        );
+        
+        // Get the conflicting class details
+        const conflictingClass = classes.find(cls => 
+          cls._id === selectedClass._id
+        );
+        
+        return {
+          hasConflict: true,
+          conflictDetails: {
+            facultyId: facultyToCheck,
+            facultyName: faculties[facultyToCheck]?.name || faculties[facultyToCheck]?.username || 'Unknown Faculty',
+            conflictingHour,
+            conflictingSubject: conflictingSubject?.name || conflictingSubject?.value || 'Unknown Subject',
+            currentSubject: subject.name || subject.value,
+            day,
+            conflictingClassName: conflictingClass?.className || 'Unknown Class',
+            currentClassName: selectedClass?.className || 'Unknown Class'
+          }
+        };
+      }
+      
+      return { hasConflict: false };
+    } catch (error) {
+      console.error('Error checking faculty conflict:', error);
+      return { hasConflict: false };
+    }
+  };
+
+  // Fetch faculty availability for a specific day, hour, and class
+  const checkFacultyAvailability = async (day, hour, subjectId, classId) => {
+    return checkFacultyConflict(day, hour, subjectId);
+  };
+
+  // Handle form submission for saving timetable
+  const handleSubmit = async () => {
+    try {
+      // Convert selected subjects to the format expected by handleSaveTimetable
+      const values = {};
+      Object.keys(selectedSubjects).forEach(key => {
+        values[key] = selectedSubjects[key];
+      });
+      
+      await handleSaveTimetable(values);
+    } catch (error) {
+      console.error('Error saving timetable:', error);
+      message.error('Failed to save timetable');
+    }
+  };
+
+  // Handle saving timetable to backend
+  const handleSaveTimetable = async (values) => {
+    try {
+      // Construct timetable array from form values
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const hourNames = [
+        'firstHour', 'secondHour', 'thirdHour', 'fourthHour', 
+        'fifthHour', 'sixthHour', 'seventhHour'
+      ];
+
+      // For debugging - log the values being submitted
+      console.log("Form values being saved:", values);
+
+      // Construct the new timetable
+      const timetable = days.map(day => {
+        // Create a day's timetable object with explicit hour structure
+        const dayTimetable = { day };
+
+        // Iterate through all 7 periods
+        for (let i = 0; i < 7; i++) {
+          const periodValue = values[`${day}-period-${i + 1}`];
+          
+          // If a period value exists, store it
+          if (periodValue) {
+            // Extract subject ID or code based on the object structure
+            let subjectId = null;
+            let facultyId = null;
+            if (typeof periodValue === 'object') {
+              // If it has an _id field, use that (it's a subject object)
+              if (periodValue._id) {
+                subjectId = periodValue._id;
+              } 
+              // Otherwise if it has a code field, use the code
+              else if (periodValue.code) {
+                subjectId = periodValue.code;
+              }
+              
+              // Get faculty ID
+              facultyId = periodValue.facultyId;
+            } else {
+              // Direct value (string) assignment
+              subjectId = periodValue;
+            }
+
+            // Store subject with faculty
+            dayTimetable[hourNames[i]] = {
+              subject: subjectId,
+              faculty: facultyId
+            };
+          } else {
+            // Explicitly set null for empty periods
+            dayTimetable[hourNames[i]] = {
+              subject: null,
+              faculty: null
+            };
+          }
+        }
+
+        return dayTimetable;
+      });
+
+      // Validate timetable structure
+      if (!timetable || !timetable.length) {
+        message.error('Invalid timetable structure');
+        throw new Error('Invalid timetable structure');
+      }
+
+      // Prepare and send faculty timetable updates
+      const facultyUpdatePromises = [];
+
+      console.log('Preparing faculty timetable updates', { timetable, selectedClass });
+
+      // Get information about previous faculty slots by directly checking the server
+      try {
+        // First, get a list of all faculty IDs that appear in either the old or new timetable
+        const facultyIds = new Set();
+        
+        // Check old timetable
+        if (selectedTimetable && selectedTimetable.length > 0) {
+          selectedTimetable.forEach(daySchedule => {
+            hourNames.forEach(hourName => {
+              const hourData = daySchedule[hourName];
+              if (hourData && hourData.faculty) {
+                facultyIds.add(hourData.faculty);
+              }
+            });
+          });
+        }
+        
+        // Check new timetable
+        timetable.forEach(daySchedule => {
+          hourNames.forEach(hourName => {
+            const hourData = daySchedule[hourName];
+            if (hourData && hourData.faculty) {
+              facultyIds.add(hourData.faculty);
+            }
+          });
+        });
+        
+        console.log('Faculty IDs involved in this timetable update:', Array.from(facultyIds));
+        
+        // For each faculty, get their current timetable
+        for (const facultyId of facultyIds) {
+          const facultyResponse = await fetch(`${API_BASE_URL}/faculty-timetables/faculty/${facultyId}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (facultyResponse.ok) {
+            const facultyData = await facultyResponse.json();
+            
+            // Process each day/period in the faculty timetable
+            if (facultyData.timetable && Array.isArray(facultyData.timetable)) {
+              facultyData.timetable.forEach(daySchedule => {
+                const day = daySchedule.day;
+                
+                hourNames.forEach((hourName, index) => {
+                  const hourData = daySchedule[hourName];
+                  
+                  // Check if this slot has the current class assigned
+                  if (hourData && hourData.class === selectedClass._id) {
+                    // Find if this slot will still have the same assignment in the new timetable
+                    const newDaySchedule = timetable.find(d => d.day === day);
+                    const newHourData = newDaySchedule ? newDaySchedule[hourName] : null;
+                    
+                    // If the slot is now empty or has a different faculty, clear it from faculty timetable
+                    if (!newHourData || !newHourData.faculty || newHourData.faculty !== facultyId) {
+                      console.log(`Clearing faculty slot: ${day} ${hourName} for faculty ${facultyId}`);
+                      
+                      // Create clear payload
+                      const clearPayload = {
+                        facultyId: facultyId,
+                        day: day,
+                        period: index + 1,
+                        subject: null,
+                        class: null,
+                        removeSubject: true  // Set this flag to true to explicitly clear the slot
+                      };
+                      
+                      console.log('Clearing faculty slot:', clearPayload);
+                      
+                      // Send update to clear the faculty timetable slot
+                      const clearPromise = fetch(`${API_BASE_URL}/faculty-timetables/update-period`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(clearPayload)
+                      }).then(async response => {
+                        const responseBody = await response.json();
+                        if (!response.ok) {
+                          console.error('Faculty timetable clearing failed:', {
+                            status: response.status,
+                            payload: clearPayload,
+                            response: responseBody
+                          });
+                          throw new Error(responseBody.message || 'Clearing failed');
+                        }
+                        return responseBody;
+                      });
+                      
+                      facultyUpdatePromises.push(clearPromise);
+                    }
+                  }
+                });
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error while checking faculty timetables:', error);
+      }
+
+      // Now add all the new assignments
+      days.forEach(day => {
+        hourNames.forEach((hourName, index) => {
+          const periodData = timetable.find(t => t.day === day)?.[hourName];
+          console.log(`Checking update for ${day} ${hourName}:`, periodData);
+
+          if (periodData && periodData.faculty) {
+            // Handle case where slot has a subject and faculty assigned
+            // Prepare update payload
+            // Ensure we have a faculty ID for the period
+            const facultyId = periodData.faculty || (periodData.subject?.faculty) || null;
+
+            const updatePayload = {
+              facultyId: facultyId,
+              day: day,
+              period: index + 1,
+              subject: periodData.subject?._id || periodData.subject || null,
+              class: selectedClass._id
+            };
+
+            console.log('Sending faculty timetable update:', {
+              payload: updatePayload,
+              originalPeriodData: periodData
+            });
+
+            // Send immediate update for each faculty period
+            const updatePromise = fetch(`${API_BASE_URL}/faculty-timetables/update-period`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatePayload)
+            }).then(async response => {
+              const responseBody = await response.json();
+              if (!response.ok) {
+                console.error('Faculty timetable update failed:', {
+                  status: response.status,
+                  payload: updatePayload,
+                  response: responseBody
+                });
+                throw new Error(responseBody.message || 'Update failed');
+              }
+              return responseBody;
+            });
+
+            facultyUpdatePromises.push(updatePromise);
+          }
+        });
+      });
+
+      // Add detailed logging to troubleshoot faculty timetable updates
+      console.log('Initial form values:', values);
+      console.log('Form values being saved:', form.getFieldsValue());
+      console.log('Preparing faculty timetable updates:', {
+        timetable: timetable,
+        selectedClass: selectedClass
+      });
+
+      // Define and initialize facultyIds before use
+      const facultyIds = new Set();
+
+      facultyUpdatePromises.forEach((promise, index) => {
+        promise.then(result => {
+          if (result && result.facultyId) {
+            facultyIds.add(result.facultyId);
+          }
+          console.log(`Faculty timetable update result for promise ${index}:`, result);
+        }).catch(error => {
+          console.error(`Error in faculty timetable update for promise ${index}:`, error);
+        });
+      });
+
+      console.log('Faculty IDs involved in this timetable update:', Array.from(facultyIds));
+
+      // Wait for all faculty timetable updates to complete
+      try {
+        const updateResults = await Promise.allSettled(facultyUpdatePromises);
+        
+        const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled');
+        const failedUpdates = updateResults.filter(result => result.status === 'rejected');
+
+        console.log('Faculty timetable update results:', {
+          total: updateResults.length,
+          successful: successfulUpdates.length,
+          failed: failedUpdates.length
+        });
+
+        if (failedUpdates.length > 0) {
+          console.error('Some faculty timetable updates failed:', failedUpdates);
+          notification.warning({
+            message: 'Partial Update',
+            description: `${failedUpdates.length} faculty timetable updates failed. Check console for details.`
+          });
+        }
+      } catch (error) {
+        console.error('Unexpected error updating faculty timetables:', error);
+        notification.error({
+          message: 'Update Error',
+          description: 'Could not update faculty timetables. Please try again.'
+        });
+      }
+
+      const response = await fetch(`${API_BASE_URL}/class-timetables/${selectedClass._id}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ timetable })
+      });
+
+      const responseText = await response.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (e) {
+        responseData = { error: responseText };
+      }
+
+      if (response.ok) {
+        console.log('Timetable Save Success:', {
+          updatedTimetable: JSON.stringify(responseData, null, 2)
+        });
+        
+        setClasses(prev => prev.map(cls => 
+          cls.key === selectedClass.key 
+            ? { ...cls, timetable: timetable } 
+            : cls
+        ));
+
+        message.success(responseData.message || 'Timetable saved successfully');
+        
+        // Check for faculty conflicts and display warnings
+        if (responseData.facultyConflicts && responseData.facultyConflicts.length > 0) {
+          console.log('Faculty conflicts detected:', responseData.facultyConflicts);
+          
+          // Group conflicts by faculty for better display
+          const facultyGroups = {};
+          responseData.facultyConflicts.forEach(conflict => {
+            const facultyId = conflict.assignedFaculty;
+            if (!facultyGroups[facultyId]) {
+              facultyGroups[facultyId] = [];
+            }
+            facultyGroups[facultyId].push(conflict);
+          });
+          
+          // Display conflicts using Ant Design notification
+          Object.keys(facultyGroups).forEach(facultyId => {
+            const conflicts = facultyGroups[facultyId];
+            // Try to find faculty name, fall back to ID if not found
+            const facultyName = faculties[facultyId]?.name || 
+                               faculties[facultyId]?.username || 
+                               `Faculty ID: ${facultyId}`;
+            
+            notification.warning({
+              message: `Faculty Scheduling Conflicts: ${facultyName}`,
+              description: (
+                <div>
+                  <Alert
+                    message="Faculty has conflicting schedules"
+                    description={
+                      <div>
+                        <p>The following conflicts were detected:</p>
+                        <ul>
+                          {conflicts.map((conflict, index) => (
+                            <li key={index}>
+                              <b>{conflict.conflictDay || conflict.day}, {formatHourLabel(conflict.conflictHour || conflict.hour)}:</b>{' '}
+                              {conflict.autoAssigned ? 'Auto-assigned to' : 'Assigned to'}{' '}
+                              <b>{conflict.assignedSubject}</b> but already teaching{' '}
+                              <b>{conflict.subject}</b> in <b>{conflict.className}</b> ({conflict.year}/{conflict.class}/{conflict.section})
+                            </li>
+                          ))}
+                        </ul>
+                        <p>Please review and adjust the schedule to resolve these conflicts.</p>
+                      </div>
+                    }
+                    type="warning"
+                    showIcon
+                  />
+                </div>
+              ),
+              duration: 0, // Don't auto-dismiss
+              placement: 'topRight'
+            });
+          });
+        }
+
+        setIsCreateModalVisible(false);
+        form.resetFields();
+        setSelectedSubjects({});
+      } else {
+        console.error('Timetable Save Error:', {
+          status: response.status,
+          errorData: responseText
+        });
+        
+        message.error(responseData.error || 'Failed to save timetable');
+      }
+    } catch (error) {
+      console.error('Error saving timetable:', error);
+      message.error('Failed to save timetable');
+    }
+  };
+
+  // Helper function to format hour label for display in notifications
+  const formatHourLabel = (hourKey) => {
+    const hourMap = {
+      'firstHour': '1st Period',
+      'secondHour': '2nd Period',
+      'thirdHour': '3rd Period',
+      'fourthHour': '4th Period',
+      'fifthHour': '5th Period',
+      'sixthHour': '6th Period',
+      'seventhHour': '7th Period'
+    };
+    return hourMap[hourKey] || hourKey;
+  };
+
+  // Render subject selection dropdown
+  const renderSubjectSelect = (day, periodIndex) => {
+    const hourKey = ['firstHour', 'secondHour', 'thirdHour', 'fourthHour', 'fifthHour', 'sixthHour', 'seventhHour'][periodIndex];
+    const key = `${day}-period-${periodIndex + 1}`;
+    
+    // Get the current subject
+    const currentSubject = selectedSubjects[key];
+    
+    // Get the current faculty
+    const currentFaculty = timetable.find(d => d.day === day)?.[hourKey]?.faculty;
+    
+    // Filter subjects based on faculty availability
+    const filteredSubjects = subjects.map(subject => {
+      // Check if this subject's faculty is already assigned for this hour
+      const conflict = currentFaculty && currentFaculty !== subject.facultyId 
+        ? checkFacultyConflict(day, periodIndex, subject._id || subject.value)
+        : { hasConflict: false };
+      
+      return {
+        ...subject,
+        conflict: conflict.hasConflict,
+        conflictDetails: conflict.hasConflict ? conflict.conflictDetails : null
+      };
+    });
+
+    return (
+      <Select
+        style={{ width: '100%' }}
+        placeholder="Select Subject"
+        value={currentSubject ? currentSubject.value : null}
+        onChange={(value) => handleSubjectSelect(day, periodIndex, value)}
+        options={filteredSubjects.map(subject => ({
+          value: subject.value,
+          label: (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: '8px',
+              opacity: subject.conflict ? 0.5 : 1,
+              cursor: subject.conflict ? 'not-allowed' : 'pointer'
+            }}>
+              <span>{subject.name}</span>
+              {subject.conflict && (
+                <Tooltip 
+                  title={
+                    <div style={{ whiteSpace: 'pre-wrap' }}>
+                      {`Faculty: ${subject.conflictDetails.facultyName}\n`}
+                      {`Conflicting Hour: ${subject.conflictDetails.conflictingHour}\n`}
+                      {`Conflicting Subject: ${subject.conflictDetails.conflictingSubject}\n`}
+                      {`Current Subject: ${subject.conflictDetails.currentSubject}`}
+                    </div>
+                  }
+                >
+                  <WarningOutlined style={{ color: 'red' }} />
+                </Tooltip>
+              )}
+            </div>
+          )
+        }))}
+        disabled={loading}
+        showSearch
+        filterOption={(input, option) => 
+          option.label.toString().toLowerCase().includes(input.toLowerCase())
+        }
+      />
+    );
+  };
+
+  // Handle subject selection in timetable grid
+  const handleSubjectSelect = async (day, periodIndex, value) => {
+    const hourKeys = ['firstHour', 'secondHour', 'thirdHour', 'fourthHour', 'fifthHour', 'sixthHour', 'seventhHour'];
+    const hourKey = hourKeys[periodIndex];
+    const key = `${day}-period-${periodIndex + 1}`;
+    
+    try {
+      // Helper function to update faculty timetable
+      const updateFacultyTimetable = async (facultyId, day, periodIndex, removeSubject = false, subjectId = null, classId = null) => {
+        if (!facultyId || !selectedClass) return;
+        
+        const payload = {
+          facultyId,
+          day,
+          period: periodIndex + 1,
+          removeSubject
+        };
+        
+        if (!removeSubject) {
+          payload.subject = subjectId || (selectedSubject && (selectedSubject._id || selectedSubject.value));
+          payload.class = classId || selectedClass._id;
+        }
+        
+        console.log(`${removeSubject ? 'Removing from' : 'Updating'} faculty ${facultyId}'s timetable:`, payload);
+        
+        const response = await fetch(`${API_BASE_URL}/faculty-timetables/update-period`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to update faculty timetable:', await response.json());
+          return false;
+        } else {
+          console.log(`Successfully ${removeSubject ? 'removed subject from' : 'updated'} faculty timetable`);
+          return true;
+        }
+      };
+      
+      // Create a copy of the current timetable
+      const updatedTimetable = [...timetable];
+      
+      // Find the day entry
+      const dayEntry = updatedTimetable.find(d => d.day === day);
+      if (!dayEntry) return;
+      
+      // Get the previous subject and faculty information
+      const prevSubject = dayEntry[hourKey]?.subject || null;
+      const prevFaculty = dayEntry[hourKey]?.faculty || null;
+      const prevSecondaryFaculty = dayEntry[hourKey]?.secondaryFaculty || null;
+      
+      console.log(`Changing subject for ${day} ${hourKey}:`, {
+        previous: { 
+          subject: prevSubject, 
+          primaryFaculty: prevFaculty,
+          secondaryFaculty: prevSecondaryFaculty
+        },
+        new: value
+      });
+      
+      // If value is null, clear the entry
+      if (!value) {
+        dayEntry[hourKey] = { subject: null, faculty: null, secondaryFaculty: null };
+        setTimetable(updatedTimetable);
+        
+        // Clear the selected subject in the form
+        form.setFieldValue(key, null);
+        
+        // Update the selected subjects state
+        setSelectedSubjects(prev => {
+          const updated = { ...prev };
+          delete updated[key];
+          return updated;
+        });
+        
+        // If there was a previous subject with faculty, update the faculty timetable
+        if (prevSubject) {
+          // Update primary faculty timetable if exists
+          if (prevFaculty) {
+            try {
+              console.log(`Removing subject ${prevSubject} from primary faculty ${prevFaculty}'s timetable`);
+              await updateFacultyTimetable(prevFaculty, day, periodIndex, true);
+            } catch (error) {
+              console.error('Error updating primary faculty timetable:', error);
+            }
+          }
+          
+          // Update secondary faculty timetable if exists
+          if (prevSecondaryFaculty) {
+            try {
+              console.log(`Removing subject ${prevSubject} from secondary faculty ${prevSecondaryFaculty}'s timetable`);
+              await updateFacultyTimetable(prevSecondaryFaculty, day, periodIndex, true);
+            } catch (error) {
+              console.error('Error updating secondary faculty timetable:', error);
+            }
+          }
+        }
+        
+        return;
+      }
+      
+      // Find the selected subject
+      const selectedSubject = subjects.find(s => s.value === value);
+      if (!selectedSubject) return;
+      
+      // Get the faculty IDs from the subject
+      const primaryFacultyId = selectedSubject.facultyId;
+      const secondaryFacultyId = selectedSubject.secondaryFacultyId || null;
+      
+      console.log('Selected subject with faculties:', {
+        subject: selectedSubject.value,
+        primaryFaculty: primaryFacultyId,
+        secondaryFaculty: secondaryFacultyId
+      });
+      
+      // Update the timetable entry
+      dayEntry[hourKey] = {
+        subject: selectedSubject._id || selectedSubject.value,
+        faculty: primaryFacultyId,
+        secondaryFaculty: secondaryFacultyId
+      };
+      
+      // Update the state
+      setTimetable(updatedTimetable);
+      
+      // Update the selected subjects
+      setSelectedSubjects(prev => ({
+        ...prev,
+        [key]: selectedSubject
+      }));
+      
+      // Update primary faculty timetable if exists
+      if (primaryFacultyId) {
+        try {
+          await updateFacultyTimetable(
+            primaryFacultyId, 
+            day, 
+            periodIndex, 
+            false, 
+            selectedSubject._id || selectedSubject.value,
+            selectedClass._id
+          );
+          
+          // Clear any existing conflicts for this time slot first
+          setFacultyConflicts(prev => {
+            const updated = { ...prev };
+            delete updated[`${day}-${hourKey}-primary`];
+            delete updated[`${day}-${hourKey}-secondary`];
+            return updated;
+          });
+          
+          // Check for faculty conflicts
+          const conflict = await checkFacultyConflict(day, periodIndex, selectedSubject._id || selectedSubject.value);
+          
+          if (conflict && conflict.hasConflict) {
+            notification.warning({
+              message: 'Faculty Schedule Conflict',
+              description: `${selectedSubject.facultyName} is already scheduled for ${selectedClass.year} - ${selectedClass.className}/${selectedClass.section === 'N/A' ? '' : selectedClass.section} during this time slot.`,
+              duration: 5
+            });
+            
+            // Update conflicts state with more detailed information
+            setFacultyConflicts(prev => ({
+              ...prev,
+              [`${day}-${hourKey}-primary`]: {
+                subject: selectedSubject,
+                faculty: primaryFacultyId,
+                conflict: {
+                  ...conflict.conflictDetails,
+                  type: 'primary',
+                  conflictKey: `${day}-${hourKey}`
+                }
+              }
+            }));
+          }
+        } catch (error) {
+          console.error('Error updating primary faculty timetable:', error);
+        }
+      }
+      
+      // Update secondary faculty timetable if exists
+      if (secondaryFacultyId) {
+        try {
+          await updateFacultyTimetable(
+            secondaryFacultyId, 
+            day, 
+            periodIndex, 
+            false, 
+            selectedSubject._id || selectedSubject.value,
+            selectedClass._id
+          );
+          
+          // Check for faculty conflicts for secondary faculty
+          // Note: You may need to create a separate function for checking secondary faculty conflicts
+          const conflict = await checkFacultyConflict(day, periodIndex, selectedSubject._id || selectedSubject.value, secondaryFacultyId);
+          if (conflict && conflict.hasConflict) {
+            notification.warning({
+              message: 'Faculty Schedule Conflict',
+              description: `Faculty is already scheduled for ${conflict.conflictDetails.className} (${selectedClass.year}/${selectedClass.className}/${selectedClass.section === 'N/A' ? '' : selectedClass.section}) during this time slot.`,
+              duration: 5
+            });
+            
+            // Update conflicts state with more detailed information
+            setFacultyConflicts(prev => ({
+              ...prev,
+              [`${day}-${hourKey}-secondary`]: {
+                subject: selectedSubject,
+                faculty: secondaryFacultyId,
+                conflict: {
+                  ...conflict.conflictDetails,
+                  type: 'secondary',
+                  conflictKey: `${day}-${hourKey}`
+                }
+              }
+            }));
+          } else {
+            // Remove conflict if resolved
+            setFacultyConflicts(prev => {
+              const updated = { ...prev };
+              delete updated[`${day}-${hourKey}-secondary`];
+              return updated;
+            });
+          }
+        } catch (error) {
+          console.error('Error updating secondary faculty timetable:', error);
+        }
+      }
+      
+      // If there were previous faculties and they're different from the current ones,
+      // remove the subject from their timetables
+      if (prevFaculty && prevFaculty !== primaryFacultyId) {
+        try {
+          await updateFacultyTimetable(prevFaculty, day, periodIndex, true);
+        } catch (error) {
+          console.error('Error updating previous primary faculty timetable:', error);
+        }
+      }
+      
+      if (prevSecondaryFaculty && prevSecondaryFaculty !== secondaryFacultyId) {
+        try {
+          await updateFacultyTimetable(prevSecondaryFaculty, day, periodIndex, true);
+        } catch (error) {
+          console.error('Error updating previous secondary faculty timetable:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling subject selection:', error);
+      message.error('Failed to update timetable');
+    }
+  };
+
+  // Reset conflicts when modal is opened/closed
+  const handleOpenCreateModal = (record) => {
+    setFacultyConflicts({});
+    setLoading(true);
+    setSelectedClass(record);
+    showEditModal(record);
+  };
+
+  // Close create/edit modal
+  const handleCreateCancel = () => {
+    setIsCreateModalVisible(false);
+    setSelectedClass(null);
+    form.resetFields();
+    setSelectedSubjects({});
+    setFacultyConflicts({}); // Reset conflicts when modal is closed
+  };
+
+  // Display the timetable view modal
+  const showViewModal = async (record) => {
+    try {
+      setLoading(true);
+      setSelectedClass(record);
+      
+      const response = await fetch(`${API_BASE_URL}/class-timetables/${record._id}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch timetable');
+      }
+      
+      const timetableData = await response.json();
+      console.log('Fetched Timetable:', timetableData);
+      
+      if (timetableData && timetableData.timetable) {
+        setSelectedTimetable(timetableData.timetable);
+      } else {
+        setSelectedTimetable([]);
+      }
+      
+      setIsViewModalVisible(true);
+    } catch (error) {
+      console.error('Error fetching timetable', error);
+      message.error('Failed to fetch timetable');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Create Timetable Button Click
+  const handleCreateTimetable = async (record) => {
+    try {
+      setLoading(true);
+      setSelectedClass(record);
+      
+      const response = await fetch(`${API_BASE_URL}/class-timetables/${record._id}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      let existingTimetable = [];
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.timetable) {
+          existingTimetable = data.timetable;
+          console.log('Loaded existing timetable for edit:', existingTimetable);
+        }
+      }
+      
+      const facultyAssignmentsResponse = await fetch(`${API_BASE_URL}/classes/${record._id}/faculty-assignments`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const subjectFacultyMap = {};
+      
+      if (facultyAssignmentsResponse.ok) {
+        const facultyAssignments = await facultyAssignmentsResponse.json();
+        console.log('Fetched faculty assignments:', facultyAssignments);
+        
+        facultyAssignments.forEach(assignment => {
+          if (assignment.subjectCode && assignment.primaryFaculty) {
+            const facultyId = typeof assignment.primaryFaculty === 'string' 
+              ? assignment.primaryFaculty 
+              : assignment.primaryFaculty.$oid || assignment.primaryFaculty;
+            
+            subjectFacultyMap[assignment.subjectCode] = {
+              facultyId,
+              facultyName: null,
+              facultyEmployeeId: null
+            };
+          }
+        });
+      } else {
+        console.warn('Failed to fetch faculty assignments, continuing without them');
+      }
+      
+      try {
+        const facultyIds = Object.values(subjectFacultyMap)
+          .map(mapping => mapping.facultyId)
+          .filter(id => id);
+        
+        if (facultyIds.length > 0) {
+          const usernamesResponse = await fetch(`${API_BASE_URL}/users/usernames`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ userIds: facultyIds })
+          });
+          
+          let usernamesMap = {};
+          if (usernamesResponse.ok) {
+            usernamesMap = await usernamesResponse.json();
+            console.log('Fetched usernames:', usernamesMap);
+          } else {
+            console.warn('Failed to fetch usernames');
+          }
+          
+          Object.keys(subjectFacultyMap).forEach(subjectCode => {
+            const mapping = subjectFacultyMap[subjectCode];
+            
+            mapping.facultyName = usernamesMap[mapping.facultyId] || mapping.facultyId;
+            mapping.facultyEmployeeId = mapping.facultyId;
+          });
+        }
+        
+        console.log('Updated subject-faculty map:', subjectFacultyMap);
+      } catch (error) {
+        console.error('Error fetching faculty usernames:', error);
+        
+        Object.keys(subjectFacultyMap).forEach(subjectCode => {
+          const mapping = subjectFacultyMap[subjectCode];
+          mapping.facultyName = mapping.facultyId;
+          mapping.facultyEmployeeId = mapping.facultyId;
+        });
+      }
+      
+      const subjectsResponse = await fetch(`${API_BASE_URL}/subjects/class/${record._id}`, {
+        credentials: 'include'
+      });
+      
+      if (!subjectsResponse.ok) {
+        throw new Error('Failed to fetch subjects');
+      }
+      
+      const subjectsData = await subjectsResponse.json();
+      console.log('Fetched Subjects Data:', subjectsData);
+      
+      const subjectOptions = subjectsData.map(subject => {
+        const facultyInfo = subjectFacultyMap[subject.subjectCode] || {};
+        
+        const acronym = generateAcronym(subject.subjectName);
+        
+        return {
+          value: subject.subjectCode,
+          label: `${subject.subjectCode} - ${subject.subjectName}`,
+          shortLabel: `${acronym} - ${subject.subjectCode}`,
+          code: subject.subjectCode,
+          _id: subject._id,
+          subjectName: subject.subjectName,
+          acronym: acronym,
+          facultyId: facultyInfo.facultyId || null,
+          facultyName: facultyInfo.facultyName || 'Not Assigned',
+          facultyEmployeeId: facultyInfo.facultyEmployeeId || ''
+        };
+      });
+      
+      console.log('Final subject options with faculty info:', subjectOptions);
+      setSubjects(subjectOptions);
+      
+      const initialValues = {};
+      const initialSubjects = {};
+      
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const hourNames = [
+        'firstHour', 'secondHour', 'thirdHour', 'fourthHour', 
+        'fifthHour', 'sixthHour', 'seventhHour'
+      ];
+      
+      days.forEach(day => {
+        const daySchedule = existingTimetable.find(d => d.day === day);
+        
+        if (daySchedule) {
+          hourNames.forEach((hourName, index) => {
+            const hour = daySchedule[hourName];
+            const periodKey = `${day}-period-${index + 1}`;
+            
+            if (hour && hour.subject) {
+              const matchingSubject = subjectOptions.find(opt => 
+                opt._id === hour.subject._id || 
+                opt.code === hour.subject.subjectCode
+              );
+              
+              if (matchingSubject) {
+                initialValues[periodKey] = matchingSubject.value;
+                initialSubjects[periodKey] = matchingSubject;
+              }
+            }
+          });
+        }
+      });
+      
+      console.log('Setting initial form values:', initialValues);
+      form.setFieldsValue(initialValues);
+      setSelectedSubjects(initialSubjects);
+      
+      setIsCreateModalVisible(true);
+    } catch (error) {
+      console.error('Error preparing timetable form:', error);
+      message.error('Failed to prepare timetable form');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generate acronym from a subject name (similar to TimetableGrid)
+  const generateAcronym = (subjectName) => {
+    if (!subjectName) return '';
+    
+    return subjectName
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase())
+      .join('');
+  };
+
+  // Close view modal
+  const handleViewCancel = () => {
+    setIsViewModalVisible(false);
+    setSelectedTimetable(null);
+    setSelectedClass(null);
+  };
+
+  // Table columns
+  const columns = [
+    {
+      title: 'Year',
+      dataIndex: 'year',
+      key: 'year',
+    },
+    {
+      title: 'Class Name',
+      dataIndex: 'className',
+      key: 'className',
+      render: (text, record) => record.className || 'Unknown Class'
+    },
+    {
+      title: 'Section',
+      dataIndex: 'section',
+      key: 'section',
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 140,
+      render: (_, record) => (
+        <Space size="middle">
+          <Button type="primary" size="small" onClick={() => showViewModal(record)}>View</Button>
+          <Button type="default" size="small" onClick={() => handleCreateTimetable(record)}>Create/Edit</Button>
+        </Space>
+      )
+    }
+  ];
+
+  // Function to get faculty name from subject
+  const getFacultyName = (subject) => {
+    if (!subject) return '';
+    
+    if (typeof subject === 'object') {
+      if (subject.facultyName) return subject.facultyName;
+      if (subject.facultyId && faculties[subject.facultyId]) {
+        return faculties[subject.facultyId].name;
+      }
+    }
+    return '';
+  };
+
+  // Generate columns for the timetable edit grid
+  const generateTimetableEditColumns = () => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const periodTimes = [
+      '8:45 AM - 9:45 AM',
+      '9:45 AM - 10:45 AM',
+      '11:00 AM - 12:00 PM',
+      '12:00 PM - 1:00 PM',
+      '1:45 PM - 2:45 PM',
+      '2:45 PM - 3:45 PM',
+      '3:45 PM - 4:45 PM'
+    ];
+    
+    return [
+      {
+        title: 'Day',
+        dataIndex: 'day',
+        key: 'day',
+        width: 100,
+        render: text => <strong>{text}</strong>,
+        fixed: 'left',
+      },
+      ...Array(7).fill().map((_, i) => ({
+        title: (
+          <div>
+            <strong>{['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][i]} Hour</strong>
+            <br />
+            {periodTimes[i]}
+          </div>
+        ),
+        dataIndex: 'periods',
+        key: `period${i+1}`,
+        width: 120,
+        render: (_, record) => {
+          const day = record.day;
+          const periodKey = `${day}-period-${i+1}`;
+          const selectedValue = selectedSubjects[periodKey];
+          
+          const hasConflict = Object.keys(facultyConflicts).some(key => 
+            key === `${day}-${i}-${selectedValue?._id}`
+          );
+          
+          const getTooltipContent = () => {
+            if (!selectedValue || typeof selectedValue !== 'object') return null;
+            
+            return (
+              <div style={{ fontSize: '12px' }}>
+                <p><strong>Subject:</strong> {selectedValue.subjectName || selectedValue.label || 'Unknown'}</p>
+                <p><strong>Subject Code:</strong> {selectedValue.code}</p>
+                <p><strong>Faculty:</strong> {selectedValue.facultyName || 'Not assigned'}</p>
+                {selectedValue.facultyEmployeeId && <p><strong>Faculty ID:</strong> {selectedValue.facultyEmployeeId}</p>}
+                {hasConflict && (
+                  <div style={{ marginTop: '8px', color: '#faad14' }}>
+                    <p><strong>Warning:</strong> Faculty scheduling conflict detected!</p>
+                    {facultyConflicts[`${day}-${i}-${selectedValue._id}`]?.conflict && (
+                      <p>Already assigned to: {facultyConflicts[`${day}-${i}-${selectedValue._id}`].conflict.className}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          };
+          
+          const selectedDisplay = selectedValue && typeof selectedValue === 'object' ? (
+            <Tooltip title={getTooltipContent()} placement="right">
+              <span>{selectedValue.acronym || selectedValue.code}</span>
+            </Tooltip>
+          ) : null;
+          
+          return (
+            <Select
+              allowClear
+              showSearch
+              placeholder="Select subject"
+              optionFilterProp="label"
+              style={{ width: '100%' }}
+              options={subjects.map(subject => ({
+                ...subject,
+                label: (
+                  <Tooltip title={
+                    <div style={{ fontSize: '12px' }}>
+                      <p><strong>Subject:</strong> {subject.subjectName}</p>
+                      {/* <p><strong>Subject Code:</strong> {subject.code}</p> */}
+                      <p><strong>Faculty:</strong> {subject.facultyName || 'Not assigned'}</p>
+                      {/* {subject.facultyEmployeeId && <p><strong>Faculty ID:</strong> {subject.facultyEmployeeId}</p>} */}
+                    </div>
+                  } placement="right">
+                    <span>{subject.acronym} - {subject.code}</span>
+                  </Tooltip>
+                )
+              }))}
+              value={selectedValue?.value || selectedValue}
+              onChange={(value) => handleSubjectSelect(day, i, value)}
+              dropdownMatchSelectWidth={false}
+              status={hasConflict ? 'warning' : undefined}
+              dropdownRender={menu => (
+                <div>
+                  {menu}
+                  {hasConflict && (
+                    <Alert 
+                      message="Faculty scheduling conflict!" 
+                      type="warning" 
+                      showIcon 
+                      style={{ margin: '8px' }}
+                    />
+                  )}
+                </div>
+              )}
+            />
+          );
+        }
+      }))
+    ];
+  };
+
+  // Generate data for timetable edit grid
+  const generateTimetableEditData = () => {
+    return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => ({
+      key: day,
+      day
+    }));
+  };
+
+  // Display the create/edit timetable modal
+  const showEditModal = async (record) => {
+    try {
+      // Reset conflicts when opening the modal
+      setFacultyConflicts({});
+      setLoading(true);
+      setSelectedClass(record);
+      
+      // Fetch existing timetable if available
+      const response = await fetch(`${API_BASE_URL}/class-timetables/${record._id}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      let existingTimetable = [];
+      if (response.ok) {
+        const data = await response.json();
+        if (data.timetable && Array.isArray(data.timetable)) {
+          existingTimetable = data.timetable;
+          setSelectedTimetable(data.timetable); // Save the existing timetable in state for reference when saving
+          console.log('Loaded existing timetable for edit:', existingTimetable);
+        }
+      }
+      
+      const facultyAssignmentsResponse = await fetch(`${API_BASE_URL}/classes/${record._id}/faculty-assignments`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const subjectFacultyMap = {};
+      
+      if (facultyAssignmentsResponse.ok) {
+        const facultyAssignments = await facultyAssignmentsResponse.json();
+        console.log('Fetched faculty assignments:', facultyAssignments);
+        
+        facultyAssignments.forEach(assignment => {
+          if (assignment.subjectCode && assignment.primaryFaculty) {
+            const facultyId = typeof assignment.primaryFaculty === 'string' 
+              ? assignment.primaryFaculty 
+              : assignment.primaryFaculty.$oid || assignment.primaryFaculty;
+            
+            subjectFacultyMap[assignment.subjectCode] = {
+              facultyId,
+              facultyName: null,
+              facultyEmployeeId: null
+            };
+          }
+        });
+      } else {
+        console.warn('Failed to fetch faculty assignments, continuing without them');
+      }
+      
+      try {
+        const facultyIds = Object.values(subjectFacultyMap)
+          .map(mapping => mapping.facultyId)
+          .filter(id => id);
+        
+        if (facultyIds.length > 0) {
+          const usernamesResponse = await fetch(`${API_BASE_URL}/users/usernames`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ userIds: facultyIds })
+          });
+          
+          let usernamesMap = {};
+          if (usernamesResponse.ok) {
+            usernamesMap = await usernamesResponse.json();
+            console.log('Fetched usernames:', usernamesMap);
+          } else {
+            console.warn('Failed to fetch usernames');
+          }
+          
+          Object.keys(subjectFacultyMap).forEach(subjectCode => {
+            const mapping = subjectFacultyMap[subjectCode];
+            
+            mapping.facultyName = usernamesMap[mapping.facultyId] || mapping.facultyId;
+            mapping.facultyEmployeeId = mapping.facultyId;
+          });
+        }
+        
+        console.log('Updated subject-faculty map:', subjectFacultyMap);
+      } catch (error) {
+        console.error('Error fetching faculty usernames:', error);
+        
+        Object.keys(subjectFacultyMap).forEach(subjectCode => {
+          const mapping = subjectFacultyMap[subjectCode];
+          mapping.facultyName = mapping.facultyId;
+          mapping.facultyEmployeeId = mapping.facultyId;
+        });
+      }
+      
+      const subjectsResponse = await fetch(`${API_BASE_URL}/subjects/class/${record._id}`, {
+        credentials: 'include'
+      });
+      
+      if (!subjectsResponse.ok) {
+        throw new Error('Failed to fetch subjects');
+      }
+      
+      const subjectsData = await subjectsResponse.json();
+      console.log('Fetched Subjects Data:', subjectsData);
+      
+      const subjectOptions = subjectsData.map(subject => {
+        const facultyInfo = subjectFacultyMap[subject.subjectCode] || {};
+        
+        const acronym = generateAcronym(subject.subjectName);
+        
+        return {
+          value: subject.subjectCode,
+          label: `${subject.subjectCode} - ${subject.subjectName}`,
+          shortLabel: `${acronym} - ${subject.subjectCode}`,
+          code: subject.subjectCode,
+          _id: subject._id,
+          subjectName: subject.subjectName,
+          acronym: acronym,
+          facultyId: facultyInfo.facultyId || null,
+          facultyName: facultyInfo.facultyName || 'Not Assigned',
+          facultyEmployeeId: facultyInfo.facultyEmployeeId || ''
+        };
+      });
+      
+      console.log('Final subject options with faculty info:', subjectOptions);
+      setSubjects(subjectOptions);
+      
+      const initialValues = {};
+      const initialSubjects = {};
+      
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const hourNames = [
+        'firstHour', 'secondHour', 'thirdHour', 'fourthHour', 
+        'fifthHour', 'sixthHour', 'seventhHour'
+      ];
+      
+      days.forEach(day => {
+        const daySchedule = existingTimetable.find(d => d.day === day);
+        
+        if (daySchedule) {
+          hourNames.forEach((hourName, index) => {
+            const hour = daySchedule[hourName];
+            const periodKey = `${day}-period-${index + 1}`;
+            
+            if (hour && hour.subject) {
+              const matchingSubject = subjectOptions.find(opt => 
+                opt._id === hour.subject._id || 
+                opt.code === hour.subject.subjectCode
+              );
+              
+              if (matchingSubject) {
+                initialValues[periodKey] = matchingSubject.value;
+                initialSubjects[periodKey] = matchingSubject;
+              }
+            }
+          });
+        }
+      });
+      
+      console.log('Setting initial form values:', initialValues);
+      form.setFieldsValue(initialValues);
+      setSelectedSubjects(initialSubjects);
+      
+      setIsCreateModalVisible(true);
+    } catch (error) {
+      console.error('Error preparing timetable form:', error);
+      message.error('Failed to prepare timetable form');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: '24px' }}>
+      <Title level={2}>Class Timetables</Title>
+      <div style={{ marginBottom: 16 }}>
+        <Text type="secondary">
+          Manage timetables for classes in your department. View, create, or edit timetables.
+        </Text>
+      </div>
+      
+      <Table 
+        columns={columns} 
+        dataSource={classes} 
+        loading={loading}
+        rowKey="key"
+        pagination={{
+          defaultPageSize: 10,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50']
+        }}
+      />
+
+      <Modal
+        title={selectedClass ? `Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${selectedClass.section}` : 'View Timetable'}
+        visible={isViewModalVisible}
+        onCancel={handleViewCancel}
+        footer={null}
+        width={800}
+      >
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: '16px' }}>Loading timetable...</div>
+          </div>
+        ) : selectedTimetable && selectedTimetable.length > 0 ? (
+          <TimetableGrid timetables={selectedTimetable} facultyConflicts={facultyConflicts} useAcronyms={true} />
+        ) : (
+          <Alert 
+            message="No timetable available" 
+            description="No timetable has been created for this class yet." 
+            type="info" 
+          />
+        )}
+      </Modal>
+
+      <Modal
+        title={selectedClass ? `Edit Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${selectedClass.section}` : 'Create Timetable'}
+        open={isCreateModalVisible}
+        onCancel={() => setIsCreateModalVisible(false)}
+        footer={null}
+        width='70%'
+      >
+        <Spin spinning={loading}>
+          {Object.keys(facultyConflicts).length > 0 && (
+            <Alert 
+              message="Faculty Schedule Conflicts Detected"
+              description="There are faculty scheduling conflicts. Please resolve them before saving."
+              type="warning"
+              showIcon
+              style={{ marginBottom: 10}}
+            />
+          )}
+          
+          <div style={{ marginBottom: 16 }}>
+            <Table
+              columns={generateTimetableEditColumns()}
+              dataSource={generateTimetableEditData()}
+              pagination={false}
+              bordered
+              size="middle"
+              scroll={{ x: 960 }}
+              style={{ overflow: 'visible' }}
+            />
+          </div>
+          
+          <div style={{ marginTop: 24, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setIsCreateModalVisible(false)}>Cancel</Button>
+              <Button 
+                type="primary" 
+                onClick={handleSubmit}
+                disabled={Object.keys(facultyConflicts).length > 0}
+                loading={loading}
+              >
+                Save Timetable
+              </Button>
+            </Space>
+          </div>
+        </Spin>
+      </Modal>
+    </div>
+  );
+  return (
+    <div style={{ padding: '24px' }}>
+      <Title level={2}>Class Timetables</Title>
+      <div style={{ marginBottom: 16 }}>
+        <Text type="secondary">
+          Manage timetables for classes in your department. View, create, or edit timetables.
+        </Text>
+      </div>
+
+      <Spin spinning={loading}>
+        <Table
+          columns={columns}
+          dataSource={classes}
+          rowKey="_id"
+          pagination={{ pageSize: 10 }}
+          style={{ marginBottom: 24 }}
+          expandable={{
+            expandedRowRender: (record) => (
+              <div style={{ padding: '16px' }}>
+                <Button
+                  type="primary"
+                  onClick={() => handleCreateTimetable(record)}
+                  style={{ marginBottom: 16 }}
+                >
+                  Create/Edit Timetable
+                </Button>
+                <Button
+                  type="default"
+                  onClick={() => showViewModal(record)}
+                >
+                  View Timetable
+                </Button>
+              </div>
+            ),
+            rowExpandable: (record) => true
+          }}
+        />
+      </Spin>
+
+      {/* View Modal */}
+      <Modal
+        title="View Timetable"
+        visible={isViewModalVisible}
+        onCancel={handleViewCancel}
+        footer={null}
+        width={1200}
+      >
+        {loading ? (
+          <div style={{ marginTop: '16px' }}>Loading timetable...</div>
+        ) : selectedTimetable && selectedTimetable.length > 0 ? (
+          <TimetableGrid timetables={selectedTimetable} facultyConflicts={facultyConflicts} useAcronyms={true} />
+        ) : (
+          <Alert 
+            message="No timetable available" 
+            type="info"
+            showIcon
+          />
+        )}
+      </Modal>
+
+      {/* Create/Edit Modal */}
+      <Modal
+        title={`Create/Edit Timetable - ${selectedClass?.className || 'Select Class'}`}
+        visible={isCreateModalVisible}
+        onCancel={handleCreateCancel}
+        footer={null}
+        width={1200}
+        destroyOnClose
+      >
+        <Spin spinning={loading}>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleSubmit}
+          >
+            <Form.Item>
+              <Table
+                columns={generateTimetableEditColumns()}
+                dataSource={generateTimetableEditData()}
+                pagination={false}
+                size="small"
+              />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit">
+                Save Timetable
+              </Button>
+            </Form.Item>
+          </Form>
+        </Spin>
+      </Modal>
+    </div>
+  );
+};
+
+export default Timetables;

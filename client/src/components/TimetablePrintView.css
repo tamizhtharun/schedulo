@@ -1,0 +1,114 @@
+.print-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.print-container {
+  width: 100%;
+  padding: 20px;
+}
+
+.college-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  border-bottom: 2px solid #ddd;
+}
+
+.college-logo {
+  width: 150px;
+  height: auto;
+  margin-right: 20px;
+}
+
+.college-info {
+  flex: 1;
+}
+
+.college-info h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #333;
+}
+
+.college-info p {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.print-timetable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+
+.print-timetable th,
+.print-timetable td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  text-align: center;
+}
+
+.print-timetable th {
+  background-color: #f5f5f5;
+  font-weight: bold;
+}
+
+.print-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.subject {
+  font-weight: bold;
+}
+
+.faculty,
+.venue {
+  font-size: 12px;
+  color: #666;
+}
+
+.empty-cell {
+  color: #999;
+}
+
+.print-footer {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid #ddd;
+  text-align: right;
+  font-size: 12px;
+  color: #666;
+}
+
+@media print {
+  .ant-modal {
+    max-height: none !important;
+    height: auto !important;
+  }
+  
+  .ant-modal-content {
+    box-shadow: none !important;
+  }
+  
+  .ant-modal-footer {
+    display: none;
+  }
+  
+  .print-container {
+    width: 100%;
+    padding: 0;
+  }
+  
+  .print-timetable {
+    page-break-inside: avoid;
+  }
+  
+  .print-footer {
+    page-break-after: always;
+  }
+}

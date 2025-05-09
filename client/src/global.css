@@ -1,0 +1,25 @@
+/* Adjust font sizes for smaller screens */
+@media (max-width: 768px) {
+  h2 {
+    font-size: 18px;
+  }
+
+  .ant-btn {
+    font-size: 12px;
+  }
+}
+
+/* Adjust table styles for smaller screens */
+@media (max-width: 576px) {
+  .ant-table {
+    font-size: 12px;
+  }
+
+  .ant-table-thead > tr > th {
+    font-size: 12px;
+  }
+
+  .ant-table-tbody > tr > td {
+    font-size: 12px;
+  }
+}
