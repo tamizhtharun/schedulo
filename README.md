@@ -1,21 +1,28 @@
-# Schedulo
+# 📅 Schedulo – A Smart Timetable Scheduler
 
-**Schedulo** is a modern and user-friendly scheduling and task management web application designed to help individuals and teams organize their daily tasks, events, and meetings efficiently.
+**Schedulo** is a user-friendly web application designed to help college administrators or department heads create and manage class timetables manually. It provides an intuitive interface with real-time conflict detection, ensuring smooth scheduling without overlaps in staff, subjects, or rooms.
 
-## 🚀 Features
+---
 
-- 🗓️ Create and manage tasks, events, and appointments
-- 📆 Interactive calendar view
-- 🔔 Notifications and reminders
-- 👥 Multi-user collaboration (optional)
-- 🌙 Light/Dark theme toggle
-- 🔐 User authentication and authorization
-- 📱 Fully responsive for all devices
+## 🔍 Key Features
+
+- ✅ Manual timetable creation
+- ⚠️ Conflict detection for:
+  - Duplicate faculty in the same time slot
+  - Room clashes
+  - Subject overlaps
+- 👨‍🏫 Faculty, subject, room, and class management
+- 💾 Save and update timetables
+- 📤 Export timetable to PDF/Print view
+- 🔐 Admin login for access control
+- 📱 Responsive design for mobile and desktop
+
+---
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: HTML, CSS, JavaScript (or React.js, if applicable)
-- **Backend**: Node.js / PHP / Python (specify your choice)
-- **Database**: MongoDB / MySQL / Firebase (specify your choice)
-- **Authentication**: JWT / OAuth / Firebase Auth
-- **APIs**: RESTful APIs
+- **Frontend**: HTML, CSS, JavaScript (Bootstrap for styling)
+- **Backend**: PHP
+- **Database**: MySQL
+
+---
