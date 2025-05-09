@@ -21,8 +21,8 @@
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: HTML, CSS, JavaScript (Bootstrap for styling)
-- **Backend**: PHP
-- **Database**: MySQL
+- **Frontend**: React.js (Ant Design)
+- **Backend**: Node.js & Express.js
+- **Database**: MongoDB
 
 ---
