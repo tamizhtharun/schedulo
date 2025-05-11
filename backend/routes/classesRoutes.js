@@ -42,6 +42,32 @@ router.get('/', authorizeRoles('HOD', 'TTIncharge', 'ClassAdvisor', 'Faculty'), 
   }
 });
 
+// Get class by ID
+router.get('/:id', authorizeRoles('HOD', 'TTIncharge', 'ClassAdvisor', 'Faculty'), async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid class ID' });
+  }
+  try {
+    const cls = await Classes.findById(id)
+      .populate('classAdvisor')
+      .populate({
+        path: 'subjectFaculties.primaryFaculty',
+        select: 'username facultyId'
+      })
+      .populate({
+        path: 'subjectFaculties.secondaryFaculty',
+        select: 'username facultyId'
+      });
+    if (!cls) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+    res.status(200).json(cls);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Edit a class (only if it belongs to this department)
 router.put('/:id', authorizeRoles('HOD', 'TTIncharge'), async (req, res) => {
   const { id } = req.params;
@@ -72,23 +98,21 @@ router.put('/:id', authorizeRoles('HOD', 'TTIncharge'), async (req, res) => {
       });
     }
 
-    const department = req.session.user.department;
     const userRole = req.session.user.role;
     
     console.log('Update Class Request:', {
       id,
-      department,
       userRole,
       body: req.body
     });
     
-    // Only update if class is in this department
-    const cls = await Classes.findOne({ _id: id, department });
+    // Remove department filter to allow update regardless of department
+    const cls = await Classes.findById(id);
     if (!cls) {
-      console.error('Class not found in department', { id, department });
+      console.error('Class not found', { id });
       return res.status(404).json({ 
-        error: 'Class not found in your department', 
-        details: { id, department, userRole } 
+        error: 'Class not found', 
+        details: { id, userRole } 
       });
     }
     
@@ -109,14 +133,12 @@ router.put('/:id', authorizeRoles('HOD', 'TTIncharge'), async (req, res) => {
       error: error.message,
       stack: error.stack,
       id,
-      department: req.session?.user?.department,
       userRole: req.session?.user?.role
     });
     res.status(400).json({ 
       error: error.message,
       details: {
         id,
-        department: req.session?.user?.department,
         userRole: req.session?.user?.role
       }
     });
@@ -190,8 +212,7 @@ router.put('/:id/subjects', authorizeRoles('HOD', 'ClassAdvisor'), async (req, r
   }
 });
 
-// Get subject-faculty assignments for a specific class
-router.get('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor'), async (req, res) => {
+router.get('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor', 'TTIncharge'), async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: 'Invalid class ID' });
@@ -207,25 +228,45 @@ router.get('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor'), as
   }
 });
 
-// Update subject-faculty assignments for a specific class
 router.put('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor'), async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: 'Invalid class ID' });
   }
   try {
-    const assignments = req.body.subjectFaculties;
-    if (!Array.isArray(assignments)) {
+    const newAssignments = req.body.subjectFaculties;
+    if (!Array.isArray(newAssignments)) {
       return res.status(400).json({ error: 'Invalid subjectFaculties format' });
     }
-    const updatedClass = await Classes.findByIdAndUpdate(
-      id,
-      { subjectFaculties: assignments },
-      { new: true }
-    );
-    if (!updatedClass) {
+
+    // Fetch existing class
+    const cls = await Classes.findById(id);
+    if (!cls) {
       return res.status(404).json({ error: 'Class not found' });
     }
+
+    // Create a map of existing assignments by subjectCode
+    const existingMap = {};
+    (cls.subjectFaculties || []).forEach(a => {
+      existingMap[a.subjectCode] = a;
+    });
+
+    // Merge new assignments into existing
+    newAssignments.forEach(newA => {
+      existingMap[newA.subjectCode] = {
+        subjectCode: newA.subjectCode,
+        primaryFaculty: newA.primaryFaculty,
+        secondaryFaculty: newA.secondaryFaculty
+      };
+    });
+
+    // Convert map back to array
+    const mergedAssignments = Object.values(existingMap);
+
+    // Update class with merged assignments
+    cls.subjectFaculties = mergedAssignments;
+    const updatedClass = await cls.save();
+
     res.status(200).json({
       message: 'Assignments updated successfully',
       subjectFaculties: updatedClass.subjectFaculties
@@ -530,6 +571,14 @@ router.get('/department/subject-classes', authorizeRoles('HOD', 'TTIncharge', 'C
     // Find all classes (no department filter)
     const classes = await Classes.find()
       .populate('classAdvisor', 'username facultyId')
+      .populate({
+        path: 'subjectFaculties.primaryFaculty',
+        select: 'username facultyId'
+      })
+      .populate({
+        path: 'subjectFaculties.secondaryFaculty',
+        select: 'username facultyId'
+      })
       .lean();
 
     // Get all subjects in the user's department
@@ -542,7 +591,7 @@ router.get('/department/subject-classes', authorizeRoles('HOD', 'TTIncharge', 'C
       return classSubjects.length > 0;
     });
 
-    // Map classes with subjects details filtered by department (without faculty info)
+    // Map classes with subjects details filtered by department (with faculty info)
     const classesWithSubjects = filteredClasses.map(cls => {
       // Filter subjects of the class to only those in the user's department
       const classSubjects = subjects.filter(sub => cls.subjects.includes(sub.subjectCode));
@@ -552,7 +601,8 @@ router.get('/department/subject-classes', authorizeRoles('HOD', 'TTIncharge', 'C
         className: cls.className,
         section: cls.section,
         classAdvisor: cls.classAdvisor,
-        subjects: classSubjects
+        subjects: classSubjects,
+        subjectFaculties: cls.subjectFaculties // include faculty assignments
       };
     });
 

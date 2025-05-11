@@ -25,6 +25,8 @@ const Timetables = () => {
   const [facultyConflicts, setFacultyConflicts] = useState({});
   const [selectedSubjects, setSelectedSubjects] = useState({});
   const [existingTimetable, setExistingTimetable] = useState([]);
+  const [selectedLabs, setSelectedLabs] = useState({});  // Added selectedLabs state
+  const [labs, setLabs] = useState([]); // Added labs state
 
   const [form] = Form.useForm();
 
@@ -32,12 +34,46 @@ const Timetables = () => {
   const resetModal = () => {
     setFacultyConflicts({});
     setSelectedSubjects({});
+    setSelectedLabs({});  // Reset selectedLabs state
+  };
+
+  // Handler for lab selection in timetable grid
+  const handleLabSelect = (day, periodIndex, labId) => {
+    const key = `${day}-period-${periodIndex + 1}`;
+    setSelectedLabs(prev => ({
+      ...prev,
+      [key]: labId
+    }));
   };
 
   // Fetch classes from backend on component mount
   useEffect(() => {
     fetchClasses();
+    fetchLabs(); // Fetch labs on mount
   }, []);
+
+  // Fetch labs from backend
+  const fetchLabs = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/labs`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch labs');
+      }
+      const data = await response.json();
+      setLabs(data.map(lab => ({
+        key: lab._id,
+        _id: lab._id,
+        labName: lab.labName,
+        labNumber: lab.labNumber,
+        department: lab.department
+      })));
+    } catch (error) {
+      console.error('Error fetching labs:', error);
+      message.error('Failed to fetch labs');
+    }
+  };
 
   // Fetch classes from backend
   const fetchClasses = async () => {
@@ -100,13 +136,13 @@ const Timetables = () => {
           if (assignment.subjectCode && assignment.primaryFaculty) {
             const facultyId = typeof assignment.primaryFaculty === 'string' 
               ? assignment.primaryFaculty 
-              : assignment.primaryFaculty.$oid || assignment.primaryFaculty;
+              : assignment.primaryFaculty._id || assignment.primaryFaculty;
             
             let secondaryFacultyId = null;
             if (assignment.secondaryFaculty) {
               secondaryFacultyId = typeof assignment.secondaryFaculty === 'string'
                 ? assignment.secondaryFaculty
-                : assignment.secondaryFaculty.$oid || assignment.secondaryFaculty;
+                : assignment.secondaryFaculty._id || assignment.secondaryFaculty;
             }
             
             subjectFacultyMap[assignment.subjectCode] = {
@@ -225,6 +261,7 @@ const subjectOptions = subjectsData.map(subject => {
       
       form.setFieldsValue(initialValues);
       setSelectedSubjects(initialSubjects);
+      setSelectedLabs({});  // Initialize selectedLabs as empty on create timetable
       
       setIsCreateModalVisible(true);
     } catch (error) {
@@ -255,6 +292,22 @@ const subjectOptions = subjectsData.map(subject => {
     } catch (error) {
       console.error('Error saving timetable:', error);
       message.error('Failed to save timetable');
+    }
+  };
+
+  // Helper to get labId for a subject by calling backend API
+  const getLabIdForSubject = async (subjectId) => {
+    if (!subjectId) return null;
+    try {
+      const response = await fetch(`${API_BASE_URL}/subjects/lab-id/${subjectId}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.labId || null;
+    } catch (error) {
+      console.error('Error fetching labId for subject:', error);
+      return null;
     }
   };
 
@@ -319,6 +372,7 @@ const subjectOptions = subjectsData.map(subject => {
     console.log('Constructed timetable for saving:', timetable);
 
     const facultyUpdatePromises = [];
+    const labTimetableUpdatePromises = [];
 
     days.forEach(day => {
       hourNames.forEach((hourName, index) => {
@@ -364,6 +418,35 @@ const subjectOptions = subjectsData.map(subject => {
             facultyUpdatePromises.push(updatePromise);
           });
         }
+
+        // Check if subject is a lab subject and update lab timetable
+        if (periodData && periodData.subject) {
+          const labId = getLabIdForSubject(periodData.subject);
+          if (labId) {
+            const labUpdatePayload = {
+              classId: selectedClass._id,
+              facultyId: periodData.primaryFaculty,
+              labId: labId,
+              subjectId: periodData.subject,
+              day: day,
+              hour: hourNames.indexOf(hourName) + 1
+            };
+            const labUpdatePromise = fetch(`${API_BASE_URL}/lab-timetables/assign`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(labUpdatePayload)
+            }).then(async response => {
+              if (!response.ok) {
+                const errorBody = await response.json();
+                console.error('Lab timetable update failed:', errorBody);
+                throw new Error(errorBody.message || 'Lab timetable update failed');
+              }
+              return await response.json();
+            });
+            labTimetableUpdatePromises.push(labUpdatePromise);
+          }
+        }
       });
     });
 
@@ -382,6 +465,15 @@ const subjectOptions = subjectsData.map(subject => {
       notification.error({
         message: 'Update Error',
         description: 'Could not update faculty timetables. Please try again.'
+      });
+    }
+
+    try {
+      await Promise.all(labTimetableUpdatePromises);
+    } catch (error) {
+      notification.error({
+        message: 'Lab Timetable Update Error',
+        description: 'Could not update lab timetables. Please try again.'
       });
     }
 
@@ -413,6 +505,7 @@ const subjectOptions = subjectsData.map(subject => {
       setIsCreateModalVisible(false);
       form.resetFields();
       setSelectedSubjects({});
+      setSelectedLabs({});  // Reset selectedLabs on save
     } else {
       message.error(responseData.error || 'Failed to save timetable');
     }
@@ -629,6 +722,9 @@ const showViewModal = async (record) => {
             key === `${day}-${i}-${selectedValue?._id}`
           );
           
+          const selectedLabId = selectedLabs[periodKey] || null;
+          const isLabSubject = selectedValue && (selectedValue.type === 'Lab' || selectedValue.type === 'Laboratory');
+          
           const getTooltipContent = () => {
             if (!selectedValue || typeof selectedValue !== 'object') return null;
 
@@ -662,43 +758,55 @@ const showViewModal = async (record) => {
           ) : null;
           
           return (
-            <Select
-              allowClear
-              showSearch
-              placeholder="Select subject"
-              optionFilterProp="label"
-              style={{ width: '100%' }}
-              options={subjects.map(subject => ({
-                ...subject,
-                label: (
-                  <Tooltip title={
-                    <div style={{ fontSize: '12px' }}>
-                      <p><strong>Subject:</strong> {subject.subjectName}</p>
-                      <p><strong>Faculty:</strong> {subject.facultyName || 'Not assigned'}</p>
-                    </div>
-                  } placement="right">
-                    <span>{subject.acronym} - {subject.code}</span>
-                  </Tooltip>
-                )
-              }))}
-              value={selectedValue?.value || selectedValue}
-              onChange={(value) => handleSubjectSelect(day, i, value)}
-              dropdownMatchSelectWidth={false}
-              status={hasConflict ? 'warning' : undefined}
-              dropdownRender={menu => (
-                <div>
-                  {menu}
-                  {hasConflict && (
-                    <Alert 
-                      message="Faculty scheduling conflict!" 
-                      type="warning" 
-                      showIcon 
-                      style={{ margin: '8px' }}
-                    />
-                  )}
-                </div>
+            <>
+              <Select
+                allowClear
+                showSearch
+                placeholder="Select subject"
+                optionFilterProp="label"
+                style={{ width: '100%' }}
+                options={subjects.map(subject => ({
+                  ...subject,
+                  label: (
+                    <Tooltip title={
+                      <div style={{ fontSize: '12px' }}>
+                        <p><strong>Subject:</strong> {subject.subjectName}</p>
+                        <p><strong>Faculty:</strong> {subject.facultyName || 'Not assigned'}</p>
+                      </div>
+                    } placement="right">
+                      <span>{subject.acronym} - {subject.code}</span>
+                    </Tooltip>
+                  )
+                }))}
+                value={selectedValue?.value || selectedValue}
+                onChange={(value) => handleSubjectSelect(day, i, value)}
+                dropdownMatchSelectWidth={false}
+                status={hasConflict ? 'warning' : undefined}
+                dropdownRender={menu => (
+                  <div>
+                    {menu}
+                    {hasConflict && (
+                      <Alert 
+                        message="Faculty scheduling conflict!" 
+                        type="warning" 
+                        showIcon 
+                        style={{ margin: '8px' }}
+                      />
+                    )}
+                  </div>
+                )}
+              />
+              {isLabSubject && (
+                <Select
+                  style={{ width: '100%', marginTop: 4 }}
+                  value={selectedLabId}
+                  onChange={(labId) => handleLabSelect(day, i, labId)}
+                  options={labs.map(lab => ({ value: lab._id, label: lab.labName }))}
+                  placeholder="Select Lab"
+                  dropdownMatchSelectWidth={false}
+                />
               )}
-            />
+            </>
           );
         }
       }))
@@ -726,6 +834,7 @@ const showViewModal = async (record) => {
     setSelectedClass(null);
     form.resetFields();
     setSelectedSubjects({});
+    setSelectedLabs({});  // Reset selectedLabs on cancel
   };
 
   return (
@@ -779,7 +888,7 @@ const showViewModal = async (record) => {
         title={selectedClass ? `Edit Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${(selectedClass.section == 'N/A') ? '' : selectedClass.subject}` : 'Create Timetable'}
         open={isCreateModalVisible}
         onCancel={() => {
-          setIsCreateModalVisible(false);
+          handleCreateCancel();
           resetModal();
         }}
         footer={null}
@@ -811,8 +920,7 @@ const showViewModal = async (record) => {
           <div style={{ marginTop: 24, textAlign: 'right' }}>
             <Space>
               <Button onClick={() => {
-                setIsCreateModalVisible(false);
-                resetModal();
+                handleCreateCancel();
               }}>Cancel</Button>
               <Button 
                 type="primary" 

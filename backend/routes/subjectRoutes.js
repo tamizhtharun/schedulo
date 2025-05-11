@@ -118,4 +118,23 @@ router.get('/class/:classId', authorizeRoles('HOD', 'ClassAdvisor', 'TTIncharge'
   }
 });
 
+router.get('/lab-id/:subjectId', authorizeRoles('HOD', 'ClassAdvisor', 'TTIncharge', 'Faculty'), async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    if (!subjectId) {
+      return res.status(400).json({ error: 'Subject ID is required' });
+    }
+    const subject = await Subject.findById(subjectId).populate('lab');
+    if (!subject) {
+      return res.status(404).json({ error: 'Subject not found' });
+    }
+    if (!subject.lab) {
+      return res.status(404).json({ error: 'Lab not associated with this subject' });
+    }
+    res.status(200).json({ labId: subject.lab._id, labName: subject.lab.labName });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

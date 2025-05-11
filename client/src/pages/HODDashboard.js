@@ -5,13 +5,14 @@ import ManageSubjects from './ManageSubjects';
 import ManageClasses from './ManageClasses';
 import ProtectedRoute from '../components/ProtectedRoute';
 import TTIncharge from './TTIncharge';
-import { TeamOutlined, BookOutlined, AppstoreOutlined, ScheduleOutlined, TableOutlined, BarsOutlined, CheckSquareOutlined } from '@ant-design/icons';
+import { TeamOutlined, BookOutlined, AppstoreOutlined, ScheduleOutlined, TableOutlined, BarsOutlined, CheckSquareOutlined, LaptopOutlined} from '@ant-design/icons';
 import FacultyTimetable from './FacultyTimetable';
 import Timetables from './Timetables';
 import AssignSubjectFaculty from './AssignSubjectFaculty';
 import FacultyOwnTimetable from './FacultyOwnTimetable';
 import { Avatar } from 'antd';
-import SubmitWillingness from './SubmitWillingness'; // Import the new component
+import SubmitWillingness from './SubmitWillingness';
+import ManageLabs from './ManageLabs';
 // import Dashboard from './Dashboard';
 
 const HODDashboard = () => {
@@ -28,8 +29,11 @@ const HODDashboard = () => {
         return (
           <ProtectedRoute allowedRoles={['hod', 'admin']}>
             <ManageClasses />
+            
           </ProtectedRoute>
         );
+      case 'ManageLabs':
+        return <ManageLabs />
       case 'TTIncharge':
         return <TTIncharge />;
       case 'Timetables':
@@ -55,6 +59,7 @@ const HODDashboard = () => {
         { key: 'ManageFaculties', label: 'Manage Faculties', icon: <TeamOutlined /> },
         { key: 'ManageSubjects', label: 'Manage Subjects', icon: <BookOutlined /> },
         { key: 'ManageClasses', label: 'Manage Classes', icon: <AppstoreOutlined /> },
+        {key: 'ManageLabs', label:'Manage Laboratories', icon: <LaptopOutlined />},
         { key: 'TTIncharge', label: 'TT Incharge', icon: <ScheduleOutlined /> },
         { key: 'Timetables', label: 'Class Timetables', icon: <TableOutlined /> },
         { key: 'facultyTimetable', label: 'Faculty Timetables', icon: <TableOutlined /> },

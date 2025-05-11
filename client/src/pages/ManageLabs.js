@@ -57,77 +57,75 @@ const ManageLabs = () => {
 
   // Download Lab Template
   const handleDownloadTemplate = () => {
-    const wbout = generateLabTemplate();
+    const wb = generateLabTemplate();
     const fileName = 'Lab_Upload_Template.xlsx';
-    XLSX.writeFile(wbout, fileName);
+    XLSX.writeFile(wb, fileName);
   };
 
   // Add/Edit Lab
-  const handleSubmit = async (values) => {
-    try {
-      const payload = {
-        ...values,
-        department: hodDepartment
-      };
+  const handleSubmit = (values) => {
+    const payload = {
+      ...values,
+      department: hodDepartment
+    };
 
-      if (editingLab) {
-        // Update existing lab
-        await axios.put(`${API_BASE_URL}/labs/${editingLab.key}`, payload);
+    let axiosPromise;
+    if (editingLab) {
+      // Update existing lab
+      axiosPromise = axios.put(`${API_BASE_URL}/labs/${editingLab.key}`, payload).then(() => {
         setLabs(labs.map(lab => 
           lab.key === editingLab.key ? { ...lab, ...payload } : lab
         ));
-      } else {
-        // Add new lab
-        const response = await axios.post(`${API_BASE_URL}/labs`, payload);
+      });
+    } else {
+      // Add new lab
+      axiosPromise = axios.post(`${API_BASE_URL}/labs`, payload).then((response) => {
         setLabs([...labs, { 
           key: response.data._id, 
           sno: labs.length + 1, 
           ...payload 
         }]);
-      }
-      
+      });
+    }
+
+    axiosPromise.then(() => {
       setModalVisible(false);
       setEditingLab(null);
-      notify('success', editingLab ? 'Lab Updated' : 'Lab Added');
-    } catch (error) {
-      notify('error', 'Operation Failed', error.message);
-    }
+    });
+
+    notify(axiosPromise, { success: editingLab ? 'Lab Updated' : 'Lab Added', error: 'Operation Failed' });
   };
 
   // Bulk Upload Handler
-  const handleBulkUpload = async (file) => {
+  const handleBulkUpload = (file) => {
     setBulkLoading(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const workbook = XLSX.read(e.target.result, { type: 'binary' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const data = XLSX.utils.sheet_to_json(worksheet);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const workbook = XLSX.read(e.target.result, { type: 'binary' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet);
 
-        // Validate and prepare data
-        const validData = data.map(row => ({
+      // Validate and prepare data
+      const validData = data
+        .filter(row => row['Lab Name'] && row['Lab Name'].toString().trim() !== '' && row['Lab Number'] && row['Lab Number'].toString().trim() !== '')
+        .map(row => ({
           labName: row['Lab Name'],
           labNumber: row['Lab Number'],
           department: hodDepartment
         }));
 
-        setBulkPreview(validData);
-        setBulkModalVisible(true);
-      };
-      reader.readAsBinaryString(file);
-    } catch (error) {
-      notify('error', 'Bulk Upload Failed', error.message);
-    } finally {
+      setBulkPreview(validData);
+      setBulkModalVisible(true);
       setBulkLoading(false);
-    }
+    };
+    reader.readAsBinaryString(file);
   };
 
   // Confirm Bulk Upload
-  const confirmBulkUpload = async () => {
+  const confirmBulkUpload = () => {
     setBulkLoading(true);
-    try {
-      const response = await axios.post(`${API_BASE_URL}/labs/bulk`, bulkPreview);
+    const axiosPromise = axios.post(`${API_BASE_URL}/labs/bulk`, bulkPreview).then((response) => {
       setLabs([
         ...labs, 
         ...response.data.map((lab, index) => ({
@@ -137,23 +135,20 @@ const ManageLabs = () => {
         }))
       ]);
       setBulkModalVisible(false);
-      notify('success', 'Bulk Upload Successful');
-    } catch (error) {
-      notify('error', 'Bulk Upload Failed', error.message);
-    } finally {
+    }).finally(() => {
       setBulkLoading(false);
-    }
+    });
+
+    notify(axiosPromise, { success: 'Bulk Upload Successful', error: 'Bulk Upload Failed' });
   };
 
   // Delete Lab
-  const handleDelete = async (record) => {
-    try {
-      await axios.delete(`${API_BASE_URL}/labs/${record.key}`);
+  const handleDelete = (record) => {
+    const axiosPromise = axios.delete(`${API_BASE_URL}/labs/${record.key}`).then(() => {
       setLabs(labs.filter(lab => lab.key !== record.key));
-      notify('success', 'Lab Deleted');
-    } catch (error) {
-      notify('error', 'Deletion Failed', error.message);
-    }
+    });
+
+    notify(axiosPromise, { success: 'Lab Deleted', error: 'Deletion Failed' });
   };
 
   // Table Columns
@@ -202,6 +197,7 @@ const ManageLabs = () => {
 
   return (
     <div>
+    <h2>Manage Laboratories</h2>
       <Space style={{ marginBottom: 16 }}>
         <Button 
           type="primary" 

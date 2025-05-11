@@ -6,7 +6,9 @@ function authorizeRoles(...roles) {
       requestPath: req.path,
       requestMethod: req.method,
       requiredRoles: roles,
-      sessionUser: req.session.user
+      sessionUser: req.session.user,
+      sessionUserRoleType: typeof req.session.user?.role,
+      sessionUserRoleValue: req.session.user?.role
     });
 
     // Check if session exists

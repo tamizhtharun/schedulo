@@ -1,4 +1,3 @@
-// Utility to generate XLSX templates for faculties and subjects
 import * as XLSX from 'xlsx';
 
 export function generateFacultyTemplate() {
@@ -21,4 +20,15 @@ export function generateSubjectTemplate() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Subjects');
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+}
+
+export function generateLabTemplate() {
+  const wsData = [
+    ['Lab Name', 'Lab Number'],
+    ...Array(20).fill(['', ''])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Labs');
+  return wb;
 }

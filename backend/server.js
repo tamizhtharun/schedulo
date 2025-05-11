@@ -12,6 +12,7 @@ const departmentRoutes = require('./routes/departmentRoutes');
 const facultyRoutes = require('./routes/facultyRoutes');
 const facultyTimetableRoutes = require('./routes/facultyTimetableRoutes');
 const classTimetableRoutes = require('./routes/classTimetableRoutes');
+const labsRoutes = require('./routes/labsRoutes');
 
 dotenv.config();
 
@@ -50,15 +51,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
-// Existing routes
-app.use('/api/users', userRoutes);
-app.use('/api/subjects', subjectRoutes);
-app.use('/api/classes', classesRoutes);
-app.use('/api/departments', departmentRoutes);
-app.use('/api/faculty', facultyRoutes);
-app.use('/api/faculty-timetables', facultyTimetableRoutes);
-app.use('/api/class-timetables', classTimetableRoutes);
+  // Routes
+  // Existing routes
+  app.use('/api/users', userRoutes);
+  app.use('/api/subjects', subjectRoutes);
+  app.use('/api/classes', classesRoutes);
+  app.use('/api/departments', departmentRoutes);
+  app.use('/api/faculty', facultyRoutes);
+  app.use('/api/faculty-timetables', facultyTimetableRoutes);
+  app.use('/api/class-timetables', classTimetableRoutes);
+  app.use('/api/labs', labsRoutes);
+  const labTimetableRoutes = require('./routes/labTimetableRoutes');
+  app.use('/api/lab-timetables', labTimetableRoutes);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })

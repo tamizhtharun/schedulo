@@ -41,7 +41,7 @@ const classesSchema = new mongoose.Schema({
       primaryFaculty: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        // made optional to allow null values
       },
       secondaryFaculty: {
         type: mongoose.Schema.Types.ObjectId,

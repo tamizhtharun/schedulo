@@ -134,16 +134,18 @@ const AssignSubjectFaculty = () => {
 
   const renderFacultyOption = (faculty, subjectCode) => {
     const hasWillingness = willingnessMap[subjectCode]?.[faculty._id];
+    const username = typeof faculty.username === 'string' ? faculty.username : '';
+    const facultyIdStr = typeof faculty.facultyId === 'string' ? faculty.facultyId : '';
     return (
       <Option key={faculty._id} value={faculty._id}>
         {hasWillingness ? (
           <Tooltip title="Faculty has submitted willingness" color="green">
             <span style={{ fontWeight: 'bold', color: 'green' }}>
-              {faculty.username} ({faculty.facultyId})
+              {username} ({facultyIdStr})
             </span>
           </Tooltip>
         ) : (
-          `${faculty.username} (${faculty.facultyId})`
+          `${username} (${facultyIdStr})`
         )}
       </Option>
     );
