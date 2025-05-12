@@ -150,7 +150,7 @@ const Login = () => {
         textAlign: 'center',
         letterSpacing: 0.2,
       }}>
-        Smart Timetable Management
+        A Timetable Scheduler
       </div>
       <Form layout="vertical" onFinish={handleLogin} style={{ width: '100%' }}>
         <Form.Item

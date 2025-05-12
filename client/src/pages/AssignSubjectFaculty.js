@@ -84,7 +84,7 @@ const AssignSubjectFaculty = () => {
         // Map of subjectCode -> facultyId -> true
         const wMap = {};
         willingnessData.forEach(w => {
-          if (w.subjectCode && w.facultyId) {
+          if (w.subjectCode && w.facultyId && w.willing === true) {
             if (!wMap[w.subjectCode]) wMap[w.subjectCode] = {};
             wMap[w.subjectCode][w.facultyId._id || w.facultyId] = true;
           }
@@ -191,16 +191,31 @@ const AssignSubjectFaculty = () => {
       key: 'secondaryFaculty',
       align: 'center',
       render: (_, record) => (
-        <Select
-          value={assignments[record.subjectCode]?.secondaryFaculty}
-          onChange={val => handleChange(record.subjectCode, 'secondaryFaculty', val)}
-          style={{ width: 200 }}
-          placeholder="Secondary Faculty"
-          allowClear
-          loading={loading}
-        >
-          {faculties.map(fac => renderFacultyOption(fac, record.subjectCode))}
-        </Select>
+      <Select
+        value={assignments[record.subjectCode]?.secondaryFaculty}
+        onChange={val => handleChange(record.subjectCode, 'secondaryFaculty', val)}
+        style={{ width: 200 }}
+        placeholder="Secondary Faculty"
+        allowClear
+        loading={loading}
+      >
+        {faculties.map(fac => {
+          const isDisabled = fac._id === assignments[record.subjectCode]?.primaryFaculty;
+          return (
+            <Option key={fac._id} value={fac._id} disabled={isDisabled}>
+              {willingnessMap[record.subjectCode]?.[fac._id] ? (
+                <Tooltip title="Faculty has submitted willingness" color="green">
+                  <span style={{ fontWeight: 'bold', color: 'green' }}>
+                    {fac.username} ({fac.facultyId || ''})
+                  </span>
+                </Tooltip>
+              ) : (
+                `${fac.username} (${fac.facultyId || ''})`
+              )}
+            </Option>
+          );
+        })}
+      </Select>
       )
     }
   ];

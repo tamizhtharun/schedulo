@@ -24,18 +24,19 @@ const SubmitWillingness = () => {
         for (const cls of classesData) {
           try {
             const willRes = await axios.get(`/classes/${cls._id}/willingness/me`);
-            if (willRes.data && willRes.data.subjectCode) {
-              allWillingness[`${cls._id}_${willRes.data.subjectCode}`] = willRes.data.willing;
+              if (willRes.data && willRes.data.subjectCode) {
+                allWillingness[`${cls._id}_${willRes.data.subjectCode}`] = Boolean(willRes.data.willing);
+              }
+            } catch (error) {
+              if (error.response && error.response.status === 404) {
+                // No willingness found for this class and faculty, treat as false
+                // Explicitly set false to avoid undefined toggle state
+                // Use a consistent key pattern with subjectCode 'no_willingness' replaced by empty string or a default
+                allWillingness[`${cls._id}_`] = false;
+              } else {
+                throw error;
+              }
             }
-          } catch (error) {
-            if (error.response && error.response.status === 404) {
-              // No willingness found for this class and faculty, treat as false
-              // Explicitly set false to avoid undefined toggle state
-              allWillingness[`${cls._id}_no_willingness`] = false;
-            } else {
-              throw error;
-            }
-          }
         }
         setWillingnessMap(allWillingness);
       } catch (error) {
@@ -107,13 +108,13 @@ const SubmitWillingness = () => {
       title: 'Willing',
       key: 'willing',
       align: 'center',
-      render: (_, record) => (
-        <Switch
-          checked={willingnessMap[`${record.classId}_${record.subjectCode}`] || false}
-          onChange={checked => handleToggle(record.classId, record.subjectCode, checked)}
-          loading={savingMap[`${record.classId}_${record.subjectCode}`] || false}
-        />
-      )
+          render: (_, record) => (
+            <Switch
+              checked={Boolean(willingnessMap[`${record.classId}_${record.subjectCode}`])}
+              onChange={checked => handleToggle(record.classId, record.subjectCode, checked)}
+              loading={savingMap[`${record.classId}_${record.subjectCode}`] || false}
+            />
+          )
     }
   ];
 
@@ -126,7 +127,7 @@ const SubmitWillingness = () => {
         subjectCode: sub.subjectCode,
         subjectName: sub.subjectName,
         credit: sub.credit,
-        className: `${cls.year} - ${cls.className} ${`-`+ cls.section && cls.section !== 'N/A' ? ' ' + cls.section : ''}`,
+        className: `${cls.year} - ${cls.className}${cls.section && cls.section !== 'N/A' ? ' ' + cls.section : ''}`,
         classAdvisor: cls.classAdvisor?.username || 'N/A'
       });
     });

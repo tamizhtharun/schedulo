@@ -18,6 +18,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '127.0.0.1';
 
 // Middleware
 app.use(cors({
@@ -51,25 +52,25 @@ app.use((req, res, next) => {
   next();
 });
 
-  // Routes
-  // Existing routes
-  app.use('/api/users', userRoutes);
-  app.use('/api/subjects', subjectRoutes);
-  app.use('/api/classes', classesRoutes);
-  app.use('/api/departments', departmentRoutes);
-  app.use('/api/faculty', facultyRoutes);
-  app.use('/api/faculty-timetables', facultyTimetableRoutes);
-  app.use('/api/class-timetables', classTimetableRoutes);
-  app.use('/api/labs', labsRoutes);
-  const labTimetableRoutes = require('./routes/labTimetableRoutes');
-  app.use('/api/lab-timetables', labTimetableRoutes);
+// Routes
+// Existing routes
+app.use('/api/users', userRoutes);
+app.use('/api/subjects', subjectRoutes);
+app.use('/api/classes', classesRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/faculty-timetables', facultyTimetableRoutes);
+app.use('/api/class-timetables', classTimetableRoutes);
+app.use('/api/labs', labsRoutes);
+const labTimetableRoutes = require('./routes/labTimetableRoutes');
+app.use('/api/lab-timetables', labTimetableRoutes);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
     console.log('Connected to MongoDB');
-    app.listen(5000, '127.0.0.1', () => {
-      console.log("Server is running on 127.0.0.1:5000");
+    app.listen(PORT, HOST, () => {
+      console.log(`Server is running on ${HOST}:${PORT}`);
     });
   })
   .catch((error) => console.error('MongoDB connection error:', error));

@@ -17,6 +17,8 @@ const Timetables = () => {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [faculties, setFaculties] = useState({});
+  const [labs, setLabs] = useState([]); // New state for labs
+  const [selectedLabs, setSelectedLabs] = useState({}); // New state for selected labs keyed by day-period
   const [loading, setLoading] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -25,36 +27,31 @@ const Timetables = () => {
   const [facultyConflicts, setFacultyConflicts] = useState({});
   const [selectedSubjects, setSelectedSubjects] = useState({});
   const [existingTimetable, setExistingTimetable] = useState([]);
-  const [selectedLabs, setSelectedLabs] = useState({});  // Added selectedLabs state
-  const [labs, setLabs] = useState([]); // Added labs state
-
   const [form] = Form.useForm();
 
   // Reset modal state
   const resetModal = () => {
     setFacultyConflicts({});
     setSelectedSubjects({});
-    setSelectedLabs({});  // Reset selectedLabs state
-  };
-
-  // Handler for lab selection in timetable grid
-  const handleLabSelect = (day, periodIndex, labId) => {
-    const key = `${day}-period-${periodIndex + 1}`;
-    setSelectedLabs(prev => ({
-      ...prev,
-      [key]: labId
-    }));
   };
 
   // Fetch classes from backend on component mount
   useEffect(() => {
     fetchClasses();
-    fetchLabs(); // Fetch labs on mount
   }, []);
 
-  // Fetch labs from backend
-  const fetchLabs = async () => {
+  // Fetch labs when create/edit modal is opened or selectedClass changes
+  useEffect(() => {
+    if (isCreateModalVisible && selectedClass) {
+      fetchLabsForClass(selectedClass._id);
+    }
+  }, [isCreateModalVisible, selectedClass]);
+
+  // Fetch labs for a given class from backend
+  const fetchLabsForClass = async (classId) => {
     try {
+      setLoading(true);
+      // Fetch all labs instead of labs by class due to missing backend endpoint
       const response = await fetch(`${API_BASE_URL}/labs`, {
         credentials: 'include'
       });
@@ -62,18 +59,26 @@ const Timetables = () => {
         throw new Error('Failed to fetch labs');
       }
       const data = await response.json();
-      setLabs(data.map(lab => ({
-        key: lab._id,
-        _id: lab._id,
-        labName: lab.labName,
-        labNumber: lab.labNumber,
-        department: lab.department
-      })));
+      // Optionally filter labs by classId here if labs have class info
+      setLabs(data);
     } catch (error) {
       console.error('Error fetching labs:', error);
-      message.error('Failed to fetch labs');
+      message.error('Failed to fetch laboratories');
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Removed fetchLabs function and related state
+
+  // Removed handleLabSelect function
+
+  // Removed lab selection UI in generateTimetableEditColumns render method
+
+  // Removed lab timetable update logic in handleSaveTimetable
+
+  // Removed any calls to setSelectedLabs or setLabs
+
 
   // Fetch classes from backend
   const fetchClasses = async () => {
@@ -220,6 +225,7 @@ const subjectOptions = subjectsData.map(subject => {
     _id: subject._id,
     subjectName: subject.subjectName,
     acronym: acronym,
+    type: subject.type || '', // Add type property to detect lab subjects
     facultyId: facultyInfo.facultyId || null,
     facultyName: facultyInfo.facultyName || 'Not Assigned',
     facultyEmployeeId: facultyInfo.facultyEmployeeId || '',
@@ -261,7 +267,7 @@ const subjectOptions = subjectsData.map(subject => {
       
       form.setFieldsValue(initialValues);
       setSelectedSubjects(initialSubjects);
-      setSelectedLabs({});  // Initialize selectedLabs as empty on create timetable
+          // setSelectedLabs({});  // Initialize selectedLabs as empty on create timetable
       
       setIsCreateModalVisible(true);
     } catch (error) {
@@ -295,6 +301,20 @@ const subjectOptions = subjectsData.map(subject => {
     }
   };
 
+  // Handle lab selection for a given day and period
+  const handleLabSelect = (day, periodIndex, labId) => {
+    const key = `${day}-period-${periodIndex + 1}`;
+    setSelectedLabs(prev => {
+      const newSelectedLabs = { ...prev };
+      if (!labId) {
+        delete newSelectedLabs[key];
+      } else {
+        newSelectedLabs[key] = labId;
+      }
+      return newSelectedLabs;
+    });
+  };
+
   // Helper to get labId for a subject by calling backend API
   const getLabIdForSubject = async (subjectId) => {
     if (!subjectId) return null;
@@ -324,6 +344,7 @@ const subjectOptions = subjectsData.map(subject => {
       for (let i = 0; i < 7; i++) {
         const periodKey = `${day}-period-${i + 1}`;
         let periodValue = values[periodKey];
+        const labId = selectedLabs[periodKey] || null; // Get selected lab for this period
 
         // If periodValue is a string (subject code), find full subject object
         if (typeof periodValue === 'string') {
@@ -354,7 +375,7 @@ const subjectOptions = subjectsData.map(subject => {
             subject: subjectId,
             primaryFaculty: primaryFacultyId,
             secondaryFaculty: secondaryFacultyId,
-            venue: periodValue.classVenue || null
+            venue: labId || periodValue.classVenue || null // Use selected lab as venue if present
           };
         } else {
           dayTimetable[hourNames[i]] = {
@@ -420,33 +441,7 @@ const subjectOptions = subjectsData.map(subject => {
         }
 
         // Check if subject is a lab subject and update lab timetable
-        if (periodData && periodData.subject) {
-          const labId = getLabIdForSubject(periodData.subject);
-          if (labId) {
-            const labUpdatePayload = {
-              classId: selectedClass._id,
-              facultyId: periodData.primaryFaculty,
-              labId: labId,
-              subjectId: periodData.subject,
-              day: day,
-              hour: hourNames.indexOf(hourName) + 1
-            };
-            const labUpdatePromise = fetch(`${API_BASE_URL}/lab-timetables/assign`, {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(labUpdatePayload)
-            }).then(async response => {
-              if (!response.ok) {
-                const errorBody = await response.json();
-                console.error('Lab timetable update failed:', errorBody);
-                throw new Error(errorBody.message || 'Lab timetable update failed');
-              }
-              return await response.json();
-            });
-            labTimetableUpdatePromises.push(labUpdatePromise);
-          }
-        }
+        // Removed lab timetable update logic as per user request
       });
     });
 
@@ -468,14 +463,8 @@ const subjectOptions = subjectsData.map(subject => {
       });
     }
 
-    try {
-      await Promise.all(labTimetableUpdatePromises);
-    } catch (error) {
-      notification.error({
-        message: 'Lab Timetable Update Error',
-        description: 'Could not update lab timetables. Please try again.'
-      });
-    }
+    // Removed lab timetable update promises handling
+
 
     const response = await fetch(`${API_BASE_URL}/class-timetables/${selectedClass._id}`, {
       method: 'POST',
@@ -505,7 +494,7 @@ const subjectOptions = subjectsData.map(subject => {
       setIsCreateModalVisible(false);
       form.resetFields();
       setSelectedSubjects({});
-      setSelectedLabs({});  // Reset selectedLabs on save
+      // setSelectedLabs({});  // Reset selectedLabs on save
     } else {
       message.error(responseData.error || 'Failed to save timetable');
     }
@@ -712,17 +701,17 @@ const showViewModal = async (record) => {
         ),
         dataIndex: 'periods',
         key: `period${i+1}`,
-        width: 120,
+        width: 130,
         render: (_, record) => {
           const day = record.day;
           const periodKey = `${day}-period-${i+1}`;
           const selectedValue = selectedSubjects[periodKey];
+          const selectedLabId = selectedLabs[periodKey];
           
           const hasConflict = Object.keys(facultyConflicts).some(key => 
             key === `${day}-${i}-${selectedValue?._id}`
           );
           
-          const selectedLabId = selectedLabs[periodKey] || null;
           const isLabSubject = selectedValue && (selectedValue.type === 'Lab' || selectedValue.type === 'Laboratory');
           
           const getTooltipContent = () => {
@@ -764,14 +753,14 @@ const showViewModal = async (record) => {
                 showSearch
                 placeholder="Select subject"
                 optionFilterProp="label"
-                style={{ width: '100%' }}
+                style={{ width: '100%', marginRight: isLabSubject ? 8 : 0 }}
                 options={subjects.map(subject => ({
                   ...subject,
                   label: (
                     <Tooltip title={
                       <div style={{ fontSize: '12px' }}>
                         <p><strong>Subject:</strong> {subject.subjectName}</p>
-                        <p><strong>Faculty:</strong> {subject.facultyName || 'Not assigned'}</p>
+                        <p><strong>Faculty:</strong> {subject.facultyName || 'Not assigned'}{subject.secondaryFacultyName ? `, ${subject.secondaryFacultyName}` : ''}</p>
                       </div>
                     } placement="right">
                       <span>{subject.acronym} - {subject.code}</span>
@@ -779,8 +768,19 @@ const showViewModal = async (record) => {
                   )
                 }))}
                 value={selectedValue?.value || selectedValue}
-                onChange={(value) => handleSubjectSelect(day, i, value)}
-                dropdownMatchSelectWidth={false}
+                onChange={(value) => {
+                  handleSubjectSelect(day, i, value);
+                  // Clear lab selection if subject changes to non-lab
+                  const newSelectedSubject = subjects.find(s => s.value === value);
+                  if (!newSelectedSubject || (newSelectedSubject.type !== 'Lab' && newSelectedSubject.type !== 'Laboratory')) {
+                    setSelectedLabs(prev => {
+                      const newLabs = { ...prev };
+                      delete newLabs[periodKey];
+                      return newLabs;
+                    });
+                  }
+                }}
+                popupMatchSelectWidth={false}
                 status={hasConflict ? 'warning' : undefined}
                 dropdownRender={menu => (
                   <div>
@@ -798,11 +798,17 @@ const showViewModal = async (record) => {
               />
               {isLabSubject && (
                 <Select
-                  style={{ width: '100%', marginTop: 4 }}
-                  value={selectedLabId}
-                  onChange={(labId) => handleLabSelect(day, i, labId)}
-                  options={labs.map(lab => ({ value: lab._id, label: lab.labName }))}
+                  allowClear
+                  showSearch
                   placeholder="Select Lab"
+                  optionFilterProp="label"
+                style={{ width: '100%', marginTop:'10px' }}
+              options={labs.map(lab => ({
+                value: lab._id,
+                label: lab.labName || lab.labNumber || 'Unnamed Lab'
+              }))}
+                  value={selectedLabId}
+                  onChange={(value) => handleLabSelect(day, i, value)}
                   dropdownMatchSelectWidth={false}
                 />
               )}
@@ -834,7 +840,6 @@ const showViewModal = async (record) => {
     setSelectedClass(null);
     form.resetFields();
     setSelectedSubjects({});
-    setSelectedLabs({});  // Reset selectedLabs on cancel
   };
 
   return (
@@ -859,7 +864,7 @@ const showViewModal = async (record) => {
       />
 
       <Modal
-        title={selectedClass ? `Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${(selectedClass.section == 'N/A')? selectedClass.section : ''}` : 'View Timetable'}
+        title={selectedClass ? `Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${(selectedClass.section === 'N/A' ? selectedClass.section : '')}` : 'View Timetable'}
         visible={isViewModalVisible}
         onCancel={() => {
           handleViewCancel();
@@ -885,7 +890,7 @@ const showViewModal = async (record) => {
       </Modal>
 
       <Modal
-        title={selectedClass ? `Edit Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${(selectedClass.section == 'N/A') ? '' : selectedClass.subject}` : 'Create Timetable'}
+        title={selectedClass ? `Edit Timetable for ${selectedClass.year} ${selectedClass.className || selectedClass.department?.name || 'Class'} ${(selectedClass.section === 'N/A' ? '' : selectedClass.section)}` : 'Create Timetable'}
         open={isCreateModalVisible}
         onCancel={() => {
           handleCreateCancel();
