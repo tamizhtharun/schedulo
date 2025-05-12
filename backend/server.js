@@ -5,6 +5,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
+
 const subjectRoutes = require('./routes/subjectRoutes');
 const classesRoutes = require('./routes/classesRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -13,6 +14,7 @@ const facultyRoutes = require('./routes/facultyRoutes');
 const facultyTimetableRoutes = require('./routes/facultyTimetableRoutes');
 const classTimetableRoutes = require('./routes/classTimetableRoutes');
 const labsRoutes = require('./routes/labsRoutes');
+const labTimetableRoutes = require('./routes/labTimetableRoutes');
 
 dotenv.config();
 
@@ -21,26 +23,31 @@ const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '127.0.0.1';
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:3000',
+  process.env.CLIENT_URL
+];
+
 app.use(cors({
-  origin: 'http://localhost:3000', // React app URL
-  credentials: true               // Allow cookies
+  origin: allowedOrigins,
+  credentials: true
 }));
 
 app.use(bodyParser.json());
 
 // Session middleware setup
 app.use(session({
-  secret: process.env.SESSION_SECRET, // Secret for signing session IDs
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
-    mongoUrl: process.env.MONGO_URI, 
+    mongoUrl: process.env.MONGO_URI,
     collectionName: 'sessions'
   }),
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 1 day
-    httpOnly: true,               // Prevent JS access to cookies
-    secure: false                 // Set true if using HTTPS
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
   }
 }));
 
@@ -50,6 +57,11 @@ app.use((req, res, next) => {
     req.user = req.session.user;
   }
   next();
+});
+
+// Basic route for health check
+app.get('/', (req, res) => {
+  res.send('API is running');
 });
 
 // Routes
@@ -65,7 +77,7 @@ app.use('/api/labs', labsRoutes);
 const labTimetableRoutes = require('./routes/labTimetableRoutes');
 app.use('/api/lab-timetables', labTimetableRoutes);
 
-// Connect to MongoDB
+// Connect to MongoDB and start server
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
     console.log('Connected to MongoDB');
