@@ -65,6 +65,8 @@ app.get('/', (req, res) => {
   res.send('API is running');
 });
 
+const willingnessRoutes = require('./routes/willingnessRoutes');
+
 // Routes
 // Existing routes
 app.use('/api/users', userRoutes);
@@ -76,6 +78,7 @@ app.use('/api/faculty-timetables', facultyTimetableRoutes);
 app.use('/api/class-timetables', classTimetableRoutes);
 app.use('/api/labs', labsRoutes);
 app.use('/api/lab-timetables', labTimetableRoutes);
+app.use('/api', willingnessRoutes);
 
 // Connect to MongoDB and start server
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })

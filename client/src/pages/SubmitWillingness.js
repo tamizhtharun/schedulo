@@ -15,15 +15,16 @@ const SubmitWillingness = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const res = await axios.get('/classes/department/subject-classes');
+        const res = await axios.get('/classes/department/classes-with-assignments');
         const classesData = res.data;
         console.log('Fetched classesData:', classesData);
         setClassesSubjects(classesData);
 
         const allWillingness = {};
         for (const cls of classesData) {
-          try {
-            const willRes = await axios.get(`/classes/${cls._id}/willingness/me`);
+          for (const sub of cls.subjectsDetails) {
+            try {
+              const willRes = await axios.get(`/classes/${cls._id}/willingness/me`, { params: { subjectCode: sub.subjectCode } });
               if (willRes.data && willRes.data.subjectCode) {
                 allWillingness[`${cls._id}_${willRes.data.subjectCode}`] = Boolean(willRes.data.willing);
               }
@@ -32,11 +33,12 @@ const SubmitWillingness = () => {
                 // No willingness found for this class and faculty, treat as false
                 // Explicitly set false to avoid undefined toggle state
                 // Use a consistent key pattern with subjectCode 'no_willingness' replaced by empty string or a default
-                allWillingness[`${cls._id}_`] = false;
+                allWillingness[`${cls._id}_${sub.subjectCode}`] = false;
               } else {
                 throw error;
               }
             }
+          }
         }
         setWillingnessMap(allWillingness);
       } catch (error) {
@@ -120,7 +122,7 @@ const SubmitWillingness = () => {
 
   const dataSource = [];
   classesSubjects.forEach(cls => {
-    cls.subjects.forEach(sub => {
+    cls.subjectsDetails.forEach(sub => {
       dataSource.push({
         key: `${cls._id}_${sub.subjectCode}`,
         classId: cls._id,
