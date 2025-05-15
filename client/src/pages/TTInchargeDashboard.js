@@ -5,6 +5,7 @@ import Timetables from './Timetables';
 import SubmitWillingness from './SubmitWillingness';
 import FacultyOwnTimetable from './FacultyOwnTimetable';
 import { TableOutlined, BarsOutlined, CheckSquareOutlined } from '@ant-design/icons';
+import LabTimetable from './LabTimetable';
 
 const TTInchargeDashboard = () => {
   const [selectedOption, setSelectedOption] = useState('Timetables'); // Default selected option
@@ -20,6 +21,8 @@ const TTInchargeDashboard = () => {
         return <SubmitWillingness />;
       case 'FacultyOwnTimetable':
         return <FacultyOwnTimetable />;
+      case 'LabTimetable':
+        return <LabTimetable />
       default:
         return <h2>Welcome to the TT Incharge Dashboard</h2>;
     }
@@ -31,6 +34,7 @@ const TTInchargeDashboard = () => {
       menuItems={[
         { key: 'Timetables', label: 'Timetables', icon: <BarsOutlined /> },
         { key: 'facultyTimetable', label: 'Faculty Timetable', icon: <TableOutlined /> },
+        {key: 'LabTimetable', label:'Lab Timetable', icon: <TableOutlined />},
         { key: 'SubmitWillingness', label: 'Submit Willingness', icon: <CheckSquareOutlined /> },
         { key: 'FacultyOwnTimetable', label: 'My Timetable', icon: <BarsOutlined /> },
       ]}

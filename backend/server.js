@@ -47,7 +47,8 @@ app.use(session({
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 1 day
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production'
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
   }
 }));
 
@@ -74,7 +75,6 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/faculty-timetables', facultyTimetableRoutes);
 app.use('/api/class-timetables', classTimetableRoutes);
 app.use('/api/labs', labsRoutes);
-const labTimetableRoutes = require('./routes/labTimetableRoutes');
 app.use('/api/lab-timetables', labTimetableRoutes);
 
 // Connect to MongoDB and start server

@@ -238,6 +238,7 @@ const subjectOptions = subjectsData.map(subject => {
       
       const initialValues = {};
       const initialSubjects = {};
+      const initialLabs = {};
       
       const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
       const hourNames = [
@@ -261,13 +262,49 @@ const subjectOptions = subjectsData.map(subject => {
                 initialSubjects[periodKey] = matchingSubject;
               }
             }
+            // Set initialLabs from venue if present
+            if (hour && hour.venue) {
+              initialLabs[periodKey] = hour.venue;
+            }
           });
         }
       });
+
+      // Fetch lab timetable data for selected class to set selectedLabs correctly
+      try {
+        const labTimetableResponse = await fetch(`${API_BASE_URL}/lab-timetables/class/${record._id}`, {
+          credentials: 'include'
+        });
+        if (labTimetableResponse.ok) {
+          const labTimetableData = await labTimetableResponse.json();
+          const labSelected = {};
+          const hourIndexMap = {
+            firstHour: 0,
+            secondHour: 1,
+            thirdHour: 2,
+            fourthHour: 3,
+            fifthHour: 4,
+            sixthHour: 5,
+            seventhHour: 6
+          };
+          labTimetableData.forEach(entry => {
+            const periodIndex = hourIndexMap[entry.hour];
+            if (periodIndex !== undefined) {
+              const key = `${entry.day}-period-${periodIndex + 1}`;
+              labSelected[key] = entry.labId;
+            }
+          });
+          setSelectedLabs(labSelected);
+        } else {
+          setSelectedLabs(initialLabs);
+        }
+      } catch (error) {
+        console.error('Error fetching lab timetable data:', error);
+        setSelectedLabs(initialLabs);
+      }
       
       form.setFieldsValue(initialValues);
       setSelectedSubjects(initialSubjects);
-          // setSelectedLabs({});  // Initialize selectedLabs as empty on create timetable
       
       setIsCreateModalVisible(true);
     } catch (error) {
@@ -333,172 +370,220 @@ const subjectOptions = subjectsData.map(subject => {
 
   // Handle saving timetable to backend
   const handleSaveTimetable = async (values) => {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    const hourNames = [
-      'firstHour', 'secondHour', 'thirdHour', 'fourthHour', 
-      'fifthHour', 'sixthHour', 'seventhHour'
-    ];
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const hourNames = [
+    'firstHour', 'secondHour', 'thirdHour', 'fourthHour',
+    'fifthHour', 'sixthHour', 'seventhHour'
+  ];
 
-    const timetable = days.map(day => {
-      const dayTimetable = { day };
-      for (let i = 0; i < 7; i++) {
-        const periodKey = `${day}-period-${i + 1}`;
-        let periodValue = values[periodKey];
-        const labId = selectedLabs[periodKey] || null; // Get selected lab for this period
+  const timetable = days.map(day => {
+    const dayTimetable = { day };
+    for (let i = 0; i < 7; i++) {
+      const periodKey = `${day}-period-${i + 1}`;
+      let periodValue = values[periodKey];
+      const labId = selectedLabs[periodKey] || null; // Get selected lab for this period
 
-        // If periodValue is a string (subject code), find full subject object
-        if (typeof periodValue === 'string') {
-          const foundSubject = subjects.find(s => s.value === periodValue);
-          if (foundSubject) {
-            periodValue = foundSubject;
-          }
-        }
-
-        if (periodValue) {
-          let subjectId = null;
-          let primaryFacultyId = null;
-          let secondaryFacultyId = null;
-
-          if (typeof periodValue === 'object') {
-            if (periodValue._id) {
-              subjectId = periodValue._id;
-            } else if (periodValue.code) {
-              subjectId = periodValue.code;
-            }
-            primaryFacultyId = periodValue.primaryFacultyId || periodValue.facultyId || null;
-            secondaryFacultyId = periodValue.secondaryFacultyId || null;
-          } else {
-            subjectId = periodValue;
-          }
-
-          dayTimetable[hourNames[i]] = {
-            subject: subjectId,
-            primaryFaculty: primaryFacultyId,
-            secondaryFaculty: secondaryFacultyId,
-            venue: labId || periodValue.classVenue || null // Use selected lab as venue if present
-          };
-        } else {
-          dayTimetable[hourNames[i]] = {
-            subject: null,
-            primaryFaculty: null,
-            secondaryFaculty: null,
-            venue: null
-          };
+      // If periodValue is a string (subject code), find full subject object
+      if (typeof periodValue === 'string') {
+        const foundSubject = subjects.find(s => s.value === periodValue);
+        if (foundSubject) {
+          periodValue = foundSubject;
         }
       }
-      return dayTimetable;
-    });
 
-    // Debug log to verify primaryFaculty presence
-    console.log('Constructed timetable for saving:', timetable);
+      if (periodValue) {
+        let subjectId = null;
+        let primaryFacultyId = null;
+        let secondaryFacultyId = null;
 
-    const facultyUpdatePromises = [];
-    const labTimetableUpdatePromises = [];
-
-    days.forEach(day => {
-      hourNames.forEach((hourName, index) => {
-        const periodData = timetable.find(t => t.day === day)?.[hourName];
-        if (periodData && (periodData.primaryFaculty || periodData.secondaryFaculty)) {
-          const updatePayloads = [];
-          if (periodData.primaryFaculty) {
-            updatePayloads.push({
-              facultyId: periodData.primaryFaculty,
-              day: day,
-              period: index + 1,
-              subject: periodData.subject?._id || periodData.subject || null,
-              class: selectedClass._id
-            });
+        if (typeof periodValue === 'object') {
+          if (periodValue._id) {
+            subjectId = periodValue._id;
+          } else if (periodValue.code) {
+            subjectId = periodValue.code;
           }
-          if (periodData.secondaryFaculty) {
-            updatePayloads.push({
-              facultyId: periodData.secondaryFaculty,
-              day: day,
-              period: index + 1,
-              subject: periodData.subject?._id || periodData.subject || null,
-              class: selectedClass._id
-            });
-          }
-          updatePayloads.forEach(updatePayload => {
-            const updatePromise = fetch(`${API_BASE_URL}/faculty-timetables/update-period`, {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updatePayload)
-            }).then(async response => {
-              const responseBody = await response.json();
-              if (!response.ok) {
-                console.error('Faculty timetable update failed:', {
-                  status: response.status,
-                  payload: updatePayload,
-                  response: responseBody
-                });
-                throw new Error(responseBody.message || 'Update failed');
-              }
-              return responseBody;
-            });
-            facultyUpdatePromises.push(updatePromise);
+          primaryFacultyId = periodValue.primaryFacultyId || periodValue.facultyId || null;
+          secondaryFacultyId = periodValue.secondaryFacultyId || null;
+        } else {
+          subjectId = periodValue;
+        }
+
+        dayTimetable[hourNames[i]] = {
+          subject: subjectId,
+          primaryFaculty: primaryFacultyId,
+          secondaryFaculty: secondaryFacultyId,
+          venue: labId || periodValue.classVenue || null // Use selected lab as venue if present
+        };
+      } else {
+        dayTimetable[hourNames[i]] = {
+          subject: null,
+          primaryFaculty: null,
+          secondaryFaculty: null,
+          venue: null
+        };
+      }
+    }
+    return dayTimetable;
+  });
+
+  // Debug log to verify primaryFaculty presence
+  console.log('Constructed timetable for saving:', timetable);
+
+  const facultyUpdatePromises = [];
+
+  for (const day of days) {
+    for (let index = 0; index < hourNames.length; index++) {
+      const hourName = hourNames[index];
+      const periodData = timetable.find(t => t.day === day)?.[hourName];
+      if (periodData && (periodData.primaryFaculty || periodData.secondaryFaculty)) {
+        const updatePayloads = [];
+        if (periodData.primaryFaculty) {
+          updatePayloads.push({
+            facultyId: periodData.primaryFaculty,
+            day: day,
+            period: index + 1,
+            subject: periodData.subject?._id || periodData.subject || null,
+            class: selectedClass._id
           });
         }
-
-        // Check if subject is a lab subject and update lab timetable
-        // Removed lab timetable update logic as per user request
-      });
-    });
-
-    try {
-      const updateResults = await Promise.allSettled(facultyUpdatePromises);
-      const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled');
-      const failedUpdates = updateResults.filter(result => result.status === 'rejected');
-
-      if (failedUpdates.length > 0) {
-        notification.warning({
-          message: 'Partial Update',
-          description: `${failedUpdates.length} faculty timetable updates failed. Check console for details.`
-        });
+        if (periodData.secondaryFaculty) {
+          updatePayloads.push({
+            facultyId: periodData.secondaryFaculty,
+            day: day,
+            period: index + 1,
+            subject: periodData.subject?._id || periodData.subject || null,
+            class: selectedClass._id
+          });
+        }
+        for (const updatePayload of updatePayloads) {
+          const updatePromise = fetch(`${API_BASE_URL}/faculty-timetables/update-period`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+          }).then(async response => {
+            const responseBody = await response.json();
+            if (!response.ok) {
+              console.error('Faculty timetable update failed:', {
+                status: response.status,
+                payload: updatePayload,
+                response: responseBody
+              });
+              throw new Error(responseBody.message || 'Update failed');
+            }
+            return responseBody;
+          });
+          facultyUpdatePromises.push(updatePromise);
+        }
       }
-    } catch (error) {
-      notification.error({
-        message: 'Update Error',
-        description: 'Could not update faculty timetables. Please try again.'
+
+      // Check if subject is a lab subject and update lab timetable
+      if (periodData && (periodData.primaryFaculty || periodData.secondaryFaculty)) {
+        const isLabSubject = subjects.find(s => s._id === (periodData.subject?._id || periodData.subject))?.type === 'Lab' || subjects.find(s => s._id === (periodData.subject?._id || periodData.subject))?.type === 'Laboratory';
+        if (isLabSubject) {
+          const labId = selectedLabs[`${day}-period-${index + 1}`] || null;
+          if (labId) {
+            const labUpdatePromises = [];
+            if (periodData.primaryFaculty) {
+              labUpdatePromises.push(fetch(`${API_BASE_URL}/lab-timetables/assign`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  classId: selectedClass._id,
+                  facultyId: periodData.primaryFaculty,
+                  labId,
+                  subjectId: periodData.subject?._id || periodData.subject,
+                  day,
+                  hour: hourName
+                })
+              }));
+            }
+            if (periodData.secondaryFaculty) {
+              labUpdatePromises.push(fetch(`${API_BASE_URL}/lab-timetables/assign`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  classId: selectedClass._id,
+                  facultyId: periodData.secondaryFaculty,
+                  labId,
+                  subjectId: periodData.subject?._id || periodData.subject,
+                  day,
+                  hour: hourName
+                })
+              }));
+            }
+            try {
+              console.log('Updating lab timetable with payloads:', labUpdatePromises.length);
+              // Backend should create new lab timetable if none exists for the class/lab/day/hour
+              await Promise.all(labUpdatePromises);
+              console.log('Lab timetable update successful');
+            } catch (error) {
+              console.error('Error updating lab timetable:', error);
+              notification.error({
+                message: 'Lab Timetable Update Error',
+                description: 'Failed to update lab timetable. Please try again.'
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  try {
+    const updateResults = await Promise.allSettled(facultyUpdatePromises);
+    const successfulUpdates = updateResults.filter(result => result.status === 'fulfilled');
+    const failedUpdates = updateResults.filter(result => result.status === 'rejected');
+
+    if (failedUpdates.length > 0) {
+      notification.warning({
+        message: 'Partial Update',
+        description: `${failedUpdates.length} faculty timetable updates failed. Check console for details.`
       });
     }
-
-    // Removed lab timetable update promises handling
-
-
-    const response = await fetch(`${API_BASE_URL}/class-timetables/${selectedClass._id}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timetable })
+  } catch (error) {
+    notification.error({
+      message: 'Update Error',
+      description: 'Could not update faculty timetables. Please try again.'
     });
+  }
 
-    const responseText = await response.text();
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (e) {
-      responseData = { error: responseText };
-    }
+  const response = await fetch(`${API_BASE_URL}/class-timetables/${selectedClass._id}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ timetable })
+  });
 
-    if (response.ok) {
-      setClasses(prev => prev.map(cls => 
-        cls.key === selectedClass.key 
-          ? { ...cls, timetable: timetable } 
-          : cls
-      ));
-      message.success(responseData.message || 'Timetable saved successfully');
-      if (responseData.facultyConflicts && responseData.facultyConflicts.length > 0) {
-        // Handle conflicts display if needed
-      }
-      setIsCreateModalVisible(false);
-      form.resetFields();
-      setSelectedSubjects({});
-      // setSelectedLabs({});  // Reset selectedLabs on save
-    } else {
-      message.error(responseData.error || 'Failed to save timetable');
+  const responseText = await response.text();
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (e) {
+    responseData = { error: responseText };
+  }
+
+  if (response.ok) {
+    setClasses(prev => prev.map(cls =>
+      cls.key === selectedClass.key
+        ? { ...cls, timetable: timetable }
+        : cls
+    ));
+    message.success(responseData.message || 'Timetable saved successfully');
+    if (responseData.facultyConflicts && responseData.facultyConflicts.length > 0) {
+      // Handle conflicts display if needed
     }
-  };
+    setIsCreateModalVisible(false);
+    form.resetFields();
+    setSelectedSubjects({});
+    // setSelectedLabs({});  // Reset selectedLabs on save
+  } else {
+    message.error(responseData.error || 'Failed to save timetable');
+  }
+}
+
 
   // Handle subject selection in timetable grid
   const handleSubjectSelect = async (day, periodIndex, value) => {
