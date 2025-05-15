@@ -11,7 +11,7 @@ import Timetables from './Timetables';
 import AssignSubjectFaculty from './AssignSubjectFaculty';
 import FacultyOwnTimetable from './FacultyOwnTimetable';
 import { Avatar } from 'antd';
-import SubmitWillingness from './SubmitWillingness';
+// import SubmitWillingness from './SubmitWillingness';
 import ManageLabs from './ManageLabs';
 // import Dashboard from './Dashboard';
 
@@ -44,8 +44,7 @@ const HODDashboard = () => {
         return <AssignSubjectFaculty />;
       case 'FacultyOwnTimetable':
         return <FacultyOwnTimetable />;
-        case 'SubmitWillingness':
-        return <SubmitWillingness />;
+
       default:
         return <h2>Welcome to the HOD Dashboard</h2>;
     }
@@ -64,7 +63,7 @@ const HODDashboard = () => {
         { key: 'Timetables', label: 'Class Timetables', icon: <TableOutlined /> },
         { key: 'facultyTimetable', label: 'Faculty Timetables', icon: <TableOutlined /> },
       { key: 'AssignFac', label: 'Assign Subject Faculties', icon: <AppstoreOutlined /> },
-      { key: 'SubmitWillingness', label: 'Submit Willingness', icon: <CheckSquareOutlined /> },
+      // { key: 'SubmitWillingness', label: 'Submit Willingness', icon: <CheckSquareOutlined /> },
       { key: 'FacultyOwnTimetable', label: 'My Timetable', icon: <BarsOutlined /> },
       ]}
       onMenuSelect={(key) => setSelectedOption(key)} // Update selected option

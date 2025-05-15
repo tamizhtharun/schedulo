@@ -56,4 +56,19 @@ router.post('/classes/:classId/willingness', authorizeRoles('Faculty'), async (r
   }
 });
 
+router.get('/classes/:classId/willingness', authorizeRoles('HOD', 'TTIncharge', 'ClassAdvisor'), async (req, res) => {
+  const { classId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(classId)) {
+    return res.status(400).json({ error: 'Invalid class ID' });
+  }
+
+  try {
+    const willingnessList = await SubjectWillingness.find({ classId });
+    res.status(200).json(willingnessList);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

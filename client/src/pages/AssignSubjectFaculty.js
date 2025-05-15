@@ -20,7 +20,7 @@ const AssignSubjectFaculty = () => {
       setLoading(true);
       try {
         // Use the endpoint that returns classes with subjects filtered by user's department
-        const res = await axios.get('/classes/department/subject-classes');
+        const res = await axios.get('/classes/department/classes-with-assignments');
         const classesData = res.data;
         setClasses(classesData);
         if (classesData.length > 0) {
@@ -66,7 +66,7 @@ const AssignSubjectFaculty = () => {
           return;
         }
 
-        setClassSubjects(selectedClass.subjects || []);
+        setClassSubjects(selectedClass.subjectsDetails || []);
 
         // Build assignments map from subjectFaculties
         const map = {};
