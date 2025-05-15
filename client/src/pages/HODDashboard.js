@@ -10,6 +10,7 @@ import FacultyTimetable from './FacultyTimetable';
 import Timetables from './Timetables';
 import AssignSubjectFaculty from './AssignSubjectFaculty';
 import FacultyOwnTimetable from './FacultyOwnTimetable';
+import LabTimetable from './LabTimetable';
 import { Avatar } from 'antd';
 // import SubmitWillingness from './SubmitWillingness';
 import ManageLabs from './ManageLabs';
@@ -44,6 +45,8 @@ const HODDashboard = () => {
         return <AssignSubjectFaculty />;
       case 'FacultyOwnTimetable':
         return <FacultyOwnTimetable />;
+      case 'LabTimetable':
+        return <LabTimetable />
 
       default:
         return <h2>Welcome to the HOD Dashboard</h2>;
@@ -61,6 +64,7 @@ const HODDashboard = () => {
         {key: 'ManageLabs', label:'Manage Laboratories', icon: <LaptopOutlined />},
         { key: 'TTIncharge', label: 'TT Incharge', icon: <ScheduleOutlined /> },
         { key: 'Timetables', label: 'Class Timetables', icon: <TableOutlined /> },
+        {key: 'LabTimetable', label:'Lab Timetable', icon: <TableOutlined />},
         { key: 'facultyTimetable', label: 'Faculty Timetables', icon: <TableOutlined /> },
       { key: 'AssignFac', label: 'Assign Subject Faculties', icon: <AppstoreOutlined /> },
       // { key: 'SubmitWillingness', label: 'Submit Willingness', icon: <CheckSquareOutlined /> },

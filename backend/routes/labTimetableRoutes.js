@@ -189,7 +189,16 @@ router.get('/lab/:labId', async (req, res) => {
   }
 
   try {
-    const labTimetable = await LabTimetable.findOne({ lab: labId }).populate('lab');
+    // Populate subject fields in timetable for each hour
+    const labTimetable = await LabTimetable.findOne({ lab: labId })
+      .populate('lab')
+      .populate('timetable.firstHour.subject')
+      .populate('timetable.secondHour.subject')
+      .populate('timetable.thirdHour.subject')
+      .populate('timetable.fourthHour.subject')
+      .populate('timetable.fifthHour.subject')
+      .populate('timetable.sixthHour.subject')
+      .populate('timetable.seventhHour.subject');
     if (!labTimetable) {
       return res.status(404).json({ message: 'Lab timetable not found' });
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Select, Typography, Spin, Alert, message } from 'antd';
+import { Table, Button, Modal, Typography, Spin, Alert, message } from 'antd';
 import TimetableGrid from '../components/TimetableGrid';
 import API_BASE_URL from '../api/config';
 
@@ -45,32 +45,28 @@ const LabTimetable = () => {
       if (!response.ok) throw new Error('Failed to fetch lab timetable');
       const data = await response.json();
 
-      // Transform data into timetable format expected by TimetableGrid
-      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      // Merge fetched timetable with all weekdays
+      const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
       const hourNames = [
         'firstHour', 'secondHour', 'thirdHour', 'fourthHour',
         'fifthHour', 'sixthHour', 'seventhHour'
       ];
 
-      const timetable = days.map(day => {
-        const dayEntry = { day };
-        hourNames.forEach(hour => {
-          dayEntry[hour] = { subject: null };
-        });
-        return dayEntry;
-      });
-
-      data.forEach(entry => {
-        const dayIndex = days.indexOf(entry.day);
-        if (dayIndex !== -1) {
-          const hour = entry.hour;
-          timetable[dayIndex][hour] = {
-            subject: entry.subject || null
-          };
+      const mergedTimetable = allDays.map(day => {
+        const dayEntry = data.find(d => d.day === day);
+        if (dayEntry) {
+          return dayEntry;
+        } else {
+          // Create empty day entry
+          const emptyDay = { day };
+          hourNames.forEach(hour => {
+            emptyDay[hour] = { subject: null, class: null };
+          });
+          return emptyDay;
         }
       });
 
-      setLabTimetable(timetable);
+      setLabTimetable(mergedTimetable);
       setIsModalVisible(true);
     } catch (error) {
       console.error('Error fetching lab timetable:', error);
