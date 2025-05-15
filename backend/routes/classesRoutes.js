@@ -191,7 +191,7 @@ router.put('/:id/subjects', authorizeRoles('HOD', 'ClassAdvisor'), async (req, r
 });
 
 // Get subject-faculty assignments for a specific class
-router.get('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor'), async (req, res) => {
+router.get('/:id/faculty-assignments', authorizeRoles('HOD', 'ClassAdvisor', 'TTIncharge'), async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: 'Invalid class ID' });

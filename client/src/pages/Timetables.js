@@ -140,14 +140,14 @@ const Timetables = () => {
         facultyAssignments.forEach(assignment => {
           if (assignment.subjectCode && assignment.primaryFaculty) {
             const facultyId = typeof assignment.primaryFaculty === 'string' 
-              ? assignment.primaryFaculty 
-              : assignment.primaryFaculty._id || assignment.primaryFaculty;
+              ? assignment.primaryFaculty.toString()
+              : assignment.primaryFaculty._id?.toString() || assignment.primaryFaculty.toString();
             
             let secondaryFacultyId = null;
             if (assignment.secondaryFaculty) {
               secondaryFacultyId = typeof assignment.secondaryFaculty === 'string'
-                ? assignment.secondaryFaculty
-                : assignment.secondaryFaculty._id || assignment.secondaryFaculty;
+                ? assignment.secondaryFaculty.toString()
+                : assignment.secondaryFaculty._id?.toString() || assignment.secondaryFaculty.toString();
             }
             
             subjectFacultyMap[assignment.subjectCode] = {
